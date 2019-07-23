@@ -1,3 +1,5 @@
+{-# LANGUAGE LambdaCase #-}
+
 module Utils
   ( Bit(..)
   , zipBy
@@ -6,8 +8,17 @@ module Utils
 
 import Data.List(sortBy)
 
+import qualified Text.ParserCombinators.ReadPrec as ReadPrec
+import Text.Read
+
 data Bit = Zero | One
   deriving (Eq,Show)
+
+instance Read Bit where
+  readPrec = ReadPrec.get >>= \case
+    '0' -> return Zero
+    '1' -> return One
+    _   -> ReadPrec.pfail
 
 sortWith :: Ord b => (a -> b) -> [a] -> [a]
 sortWith f = sortBy (\x y -> compare (f x) (f y))

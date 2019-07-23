@@ -16,8 +16,8 @@ instructions {
 - const <Reg 8> <Int 8>
 }
 
-<Inst> : Bits 5
-<add <r1> <r2>> = 0b0 ++ <r1> ++ <r2>
+<Inst> : Bits 11
+<add <r1> <r2>> = 0b0 ++ <r1> ++ <r2> ++ 0b000000
 <const <r1> <n>> = 0b1 ++ <r1> ++ <n>
 
 add <r1> <r2> {

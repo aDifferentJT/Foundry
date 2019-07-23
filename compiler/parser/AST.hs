@@ -1,33 +1,33 @@
 module AST where
 
-import Utils(Bit(..))
+import Utils (Bit(..))
 
-newtype Var = Var String
-  deriving (Eq, Ord, Show)
+data Type
+  = RegT Int
+  | BitsT Int
+  | IntT Int
+  | InstT
+  deriving (Eq, Show)
 
-data Type = NonDep String
-          | Dep String Int
+data RegType = RegType String Int
   deriving Show
 
-data RegType = RegType Var Type
+data InstType = InstType String [Type]
   deriving Show
 
-data InstType = InstType Var [Type]
+data EncType = EncType Type Int
   deriving Show
 
-data EncType = EncType Type Type
-  deriving Show
-
-data RegEnc = RegEnc Var [Bit]
+data RegEnc = RegEnc String [Bit]
   deriving Show
 
 data BitsExpr
   = ConstBitsExpr [Bit]
-  | EncBitsExpr Var
+  | EncBitsExpr String
   | ConcatBitsExpr BitsExpr BitsExpr
   deriving Show
 
-data InstEnc = InstEnc Var [Var] BitsExpr
+data InstEnc = InstEnc String [String] BitsExpr
   deriving Show
 
 data Op
@@ -38,24 +38,24 @@ data Op
   deriving Show
 
 data Expr
-  = VarExpr Var
+  = VarExpr String
   | ConstExpr Int
   | OpExpr Op Expr Expr
   deriving Show
 
-data InstImplRule = InstImplRule Var Expr
+data InstImplRule = InstImplRule String Expr
   deriving Show
 
-data InstImpl = InstImpl Var [Var] [InstImplRule]
+data InstImpl = InstImpl String [String] [InstImplRule]
   deriving Show
 
 data RawProc = RawProc [[RegType]] [[InstType]] [EncType] [RegEnc] [InstEnc] [InstImpl]
   deriving Show
 
-data Reg = Reg Var Type [Bit]
+data Reg = Reg String Int [Bit]
   deriving Show
 
-data Inst = Inst Var [Type] ([Var], [InstImplRule]) ([Var], BitsExpr)
+data Inst = Inst String [Type] ([String], [InstImplRule]) ([String], BitsExpr)
   deriving Show
 
 data Proc = Proc [Reg] [Inst] [EncType]

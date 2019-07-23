@@ -1,13 +1,20 @@
 {
+{-# LANGUAGE RecordWildCards #-}
+
 module Lexer
   ( Token(..)
-  , alexScanTokens
+  , readToken
   ) where
 
-import Utils(Bit(..))
-}
+import Prelude hiding (fail)
 
-%wrapper "basic"
+import LexerMonad
+
+import Utils (Bit(..))
+
+import Control.Monad.Except
+import qualified Control.Monad.Trans.State as State
+}
 
 $digit = 0-9       -- digits
 $alpha = [a-zA-Z]  -- alphabetic characters
@@ -18,32 +25,32 @@ tokens :-
 
   $white+    ;
   "--".*     ;
-  registers                      { const Registers }
-  instructions                   { const Instructions }
-  \:                             { const Colon }
-  \-                             { const Hyphen }
-  \=                             { const Equals }
-  \+                             { const Plus }
-  \*                             { const Times }
-  \/                             { const Slash }
-  \+\+                           { const Concat }
-  \<\-                           { const LeftArrow }
-  \<                             { const OpenAngle }
-  \>                             { const CloseAngle }
-  \{                             { const OpenCurly }
-  \}                             { const CloseCurly }
-  \(                             { const OpenParen }
-  \)                             { const CloseParen }
-  0b[01]+                        { Bits . map readBit . drop 2 }
-  $digit+                        { Int . read }
-  $lower [$alpha $digit \_ \']*  { VarTok }
-  $upper [$alpha $digit \_ \']*  { TypeTok }
+  registers                      { const . return $ Registers }
+  instructions                   { const . return $ Instructions }
+  \:                             { const . return $ Colon }
+  \-                             { const . return $ Hyphen }
+  \=                             { const . return $ Equals }
+  \+                             { const . return $ Plus }
+  \*                             { const . return $ Times }
+  \/                             { const . return $ Slash }
+  \+\+                           { const . return $ Concat }
+  \<\-                           { const . return $ LeftArrow }
+  \<                             { const . return $ OpenAngle }
+  \>                             { const . return $ CloseAngle }
+  \{                             { const . return $ OpenCurly }
+  \}                             { const . return $ CloseCurly }
+  \(                             { const . return $ OpenParen }
+  \)                             { const . return $ CloseParen }
+  0b[01]+                        { return . Bits . map (read . (:[])) . drop 2 }
+  $digit+                        { return . Int . read }
+  $lower [$alpha $digit \_ \']*  { return . VarTok }
+  Reg                            { const . return $ RegTok }
+  Bits                           { const . return $ BitsTok }
+  Int                            { const . return $ IntTok }
+  Inst                           { const . return $ InstTok }
+  $upper [$alpha $digit \_ \']*  { throwLocalError 0 . ("Unrecognised type name: " ++) }
 
 {
-readBit :: Char -> Bit
-readBit '0' = Zero
-readBit '1' = One
-
 data Token
   = Registers
   | Instructions
@@ -64,7 +71,20 @@ data Token
   | Bits [Bit]
   | Int Int
   | VarTok String
-  | TypeTok String
+  | RegTok
+  | BitsTok
+  | IntTok
+  | InstTok
+  | EOF
   deriving (Eq,Show)
+
+readToken :: LexerMonad Token
+readToken = do
+  LexerState input vars <- State.get
+  case alexScan input 0 of
+    AlexEOF                -> return EOF
+    AlexError input'       -> State.put (LexerState input' vars) >> throwLocalError 0 "Could not lex token"
+    AlexSkip input' _      -> State.put (LexerState input' vars) >> readToken
+    AlexToken input' len t -> State.put (LexerState (input' { tokPos = take 5 $ charPos input : tokPos input' }) vars) >> (t . take len . str $ input)
 }
 
