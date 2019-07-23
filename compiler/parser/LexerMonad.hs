@@ -115,6 +115,7 @@ throwGlobalError = throwError . (, Nothing)
 defineVar :: String -> LexerMonad ()
 defineVar var = do
   LexerState input vars <- State.get
+  when (Set.member var vars) . throwLocalError 2 $ "Variable " ++ var ++ " redefined"
   let vars' = Set.insert var vars
   State.put $ LexerState input vars'
 

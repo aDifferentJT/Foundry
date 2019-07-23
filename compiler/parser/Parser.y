@@ -118,7 +118,7 @@ BitsExpr          : Bits                                  { ConstBitsExpr $1 }
                   | BitsExpr '++' BitsExpr                { ConcatBitsExpr $1 $3 }
 
 InstEnc           :: { InstEnc }
-InstEnc           : '<' Var ArgList '>' '=' BitsExpr      { InstEnc $2 $3 $6 }
+InstEnc           : '<' Var ArgList '>' '=' BitsExpr      {% clearDefined >> return (InstEnc $2 $3 $6) }
 
 TypeList          :: { [Type] }
 TypeList          : {- empty -}                           { [] }
