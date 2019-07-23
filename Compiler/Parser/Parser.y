@@ -118,7 +118,7 @@ BitsExpr          : Bits                                  { UnsizedConstBitsExpr
                   | BitsExpr '++' BitsExpr                { UnsizedConcatBitsExpr $1 $3 }
 
 InstEnc           :: { InstEnc }
-InstEnc           : '<' Var ArgList '>' '=' BitsExpr      {% clearDefined >> return (InstEnc $2 $3 $6) }
+InstEnc           : '<' Var ArgList '>' '=' BitsExpr      {% clearDefined >> fmap (InstEnc $2 $3) (splitBitsExpr $6) }
 
 TypeList          :: { [Type] }
 TypeList          : {- empty -}                           { [] }
@@ -158,6 +158,19 @@ InstImpl          :: { InstImpl }
 InstImpl          : Var ArgList '{' InstImplRuleList '}'  {% clearDefined >> return (InstImpl $1 (reverse $2) $4) }
 
 {
+splitBitsExpr' :: UnsizedBitsExpr -> ([Bit], UnsizedBitsExpr)
+splitBitsExpr' (UnsizedConstBitsExpr bs)     = (bs, UnsizedConstBitsExpr [])
+splitBitsExpr' (UnsizedEncBitsExpr v)        = ([], UnsizedEncBitsExpr v)
+splitBitsExpr' (UnsizedConcatBitsExpr e1 e2) = case splitBitsExpr' e1 of
+  (bs1, UnsizedConstBitsExpr []) -> let (bs2, e2') = splitBitsExpr' e2 in (bs1 ++ bs2, e2')
+  (bs1, e1')                     -> (bs1, UnsizedConcatBitsExpr e1' e2)
+
+splitBitsExpr :: UnsizedBitsExpr -> LexerMonad ([Bit], UnsizedBitsExpr)
+splitBitsExpr e = do
+  let e' = splitBitsExpr' $ e
+  when (null . fst $ e') $ throwLocalError 0 "Instruction encodings must have a constant prefix"
+  return e'
+
 parseError :: Token -> LexerMonad a
 parseError _ = throwLocalError 0 "Parse Error"
 }

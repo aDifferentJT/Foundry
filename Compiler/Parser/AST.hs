@@ -38,7 +38,7 @@ data UnsizedBitsExpr
   | UnsizedConcatBitsExpr UnsizedBitsExpr UnsizedBitsExpr
   deriving Show
 
-data InstEnc = InstEnc String [String] UnsizedBitsExpr
+data InstEnc = InstEnc String [String] ([Bit], UnsizedBitsExpr)
   deriving Show
 
 data InstImpl = InstImpl String [String] [InstImplRule]
@@ -47,7 +47,7 @@ data InstImpl = InstImpl String [String] [InstImplRule]
 data RawProc = RawProc [[RegType]] [[InstType]] [EncType] [RegEnc] [InstEnc] [InstImpl]
   deriving Show
 
-data UnsizedInst = UnsizedInst String [Type] ([String], [InstImplRule]) ([String], UnsizedBitsExpr)
+data UnsizedInst = UnsizedInst String [Type] ([String], [InstImplRule]) ([String], ([Bit], UnsizedBitsExpr))
   deriving Show
 
 data UnsizedProc = UnsizedProc [Reg] [UnsizedInst] [EncType]

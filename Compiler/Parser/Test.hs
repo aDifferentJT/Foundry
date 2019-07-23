@@ -12,6 +12,6 @@ main = do
   ast <- runLexer parse <$> readFile fn
   let ast' = ast >>= typeCheck
   case ast' of
-    Left e      -> putStrLn e
+    Left e      -> putStr e
     Right ast'' -> print ast''
 

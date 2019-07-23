@@ -47,7 +47,7 @@ data InstImplRule = InstImplRule String Expr
 data Reg = Reg String Int [Bit]
   deriving Show
 
-data Inst = Inst String [Type] ([String], [InstImplRule]) ([String], BitsExpr)
+data Inst = Inst String [Type] ([String], [InstImplRule]) ([String], ([Bit], BitsExpr))
   deriving Show
 
 data Proc = Proc [Reg] [Inst] [EncType]

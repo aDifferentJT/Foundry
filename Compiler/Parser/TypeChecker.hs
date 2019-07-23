@@ -43,11 +43,11 @@ checkRegEncDim encTypes (Reg n t bs) = do
   unless (d1 == d2) . throwError $ "<" ++ n ++ "> is of type Bits " ++ show d2 ++ " but I expected Bits " ++ show d1
 
 checkInstEncDim :: [EncType] -> UnsizedInst -> Either String Inst
-checkInstEncDim encTypes (UnsizedInst n ts rs (vs, e)) = do
+checkInstEncDim encTypes (UnsizedInst n ts rs (vs, (bs, e))) = do
   d1 <- getEncType encTypes InstT
   (d2, e') <- instEncDim encTypes ts vs e
-  unless (d1 == d2) . throwError $ "<" ++ intercalate " " (n : ["<" ++ v ++ ">" | v <- vs]) ++ "> is of type Bits " ++ show d2 ++ " but I expected Bits " ++ show d1
-  return $ Inst n ts rs (vs, e')
+  unless (d1 == length bs + d2) . throwError $ "<" ++ intercalate " " (n : ["<" ++ v ++ ">" | v <- vs]) ++ "> is of type Bits " ++ show d2 ++ " but I expected Bits " ++ show d1
+  return $ Inst n ts rs (vs, (bs, e'))
 
 typeCheck :: UnsizedProc -> Either String Proc
 typeCheck (UnsizedProc regs insts encTypes) = do
