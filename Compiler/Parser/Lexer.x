@@ -25,30 +25,30 @@ tokens :-
 
   $white+    ;
   "--".*     ;
-  registers                      { const . return $ Registers }
-  instructions                   { const . return $ Instructions }
-  \:                             { const . return $ Colon }
-  \-                             { const . return $ Hyphen }
-  \=                             { const . return $ Equals }
-  \+                             { const . return $ Plus }
-  \*                             { const . return $ Times }
-  \/                             { const . return $ Slash }
-  \+\+                           { const . return $ Concat }
-  \<\-                           { const . return $ LeftArrow }
-  \<                             { const . return $ OpenAngle }
-  \>                             { const . return $ CloseAngle }
-  \{                             { const . return $ OpenCurly }
-  \}                             { const . return $ CloseCurly }
-  \(                             { const . return $ OpenParen }
-  \)                             { const . return $ CloseParen }
-  0b[01]+                        { return . Bits . map (read . (:[])) . drop 2 }
-  $digit+                        { return . Int . read }
-  $lower [$alpha $digit \_ \']*  { return . VarTok }
-  Reg                            { const . return $ RegTok }
-  Bits                           { const . return $ BitsTok }
-  Int                            { const . return $ IntTok }
-  Inst                           { const . return $ InstTok }
-  $upper [$alpha $digit \_ \']*  { throwLocalError 0 . ("Unrecognised type name: " ++) }
+  registers                   { const . return $ Registers }
+  instructions                { const . return $ Instructions }
+  \:                          { const . return $ Colon }
+  \-                          { const . return $ Hyphen }
+  \=                          { const . return $ Equals }
+  \+                          { const . return $ Plus }
+  \*                          { const . return $ Times }
+  \/                          { const . return $ Slash }
+  \+\+                        { const . return $ Concat }
+  \<\-                        { const . return $ LeftArrow }
+  \<                          { const . return $ OpenAngle }
+  \>                          { const . return $ CloseAngle }
+  \{                          { const . return $ OpenCurly }
+  \}                          { const . return $ CloseCurly }
+  \(                          { const . return $ OpenParen }
+  \)                          { const . return $ CloseParen }
+  0b[01]+                     { return . Bits . map (read . (:[])) . drop 2 }
+  $digit+                     { return . Int . read }
+  $lower [$alpha $digit \_]*  { return . VarTok }
+  Reg                         { const . return $ RegTok }
+  Bits                        { const . return $ BitsTok }
+  Int                         { const . return $ IntTok }
+  Inst                        { const . return $ InstTok }
+  $upper [$alpha $digit \_]*  { throwLocalError 0 . ("Unrecognised type name: " ++) }
 
 {
 data Token
