@@ -4,15 +4,21 @@ module Utils
   ( Bit(..)
   , zipBy
   , zip3By
+  , (****)
   ) where
 
-import Data.List(sortBy)
+import Control.Arrow
+import Data.List (sortBy)
 
 import qualified Text.ParserCombinators.ReadPrec as ReadPrec
 import Text.Read
 
 data Bit = Zero | One
-  deriving (Eq,Show)
+  deriving Eq
+
+instance Show Bit where
+  show Zero = "0"
+  show One  = "1"
 
 instance Read Bit where
   readPrec = ReadPrec.get >>= \case
@@ -43,4 +49,7 @@ zip3By' f _ h  xs     []     zs    = let (xzs, xs', zs') = zipBy' f h xs zs in (
 zip3By' f g _  xs     ys     []    = let (xys, xs', ys') = zipBy' f g xs ys in ([], xys, [], [], xs', ys', [])
 zip3By' f g h (x:xs) (y:ys) (z:zs) = let (x', y', z') = (f x, g y, h z) in case (compare x' y', compare x' z', compare y' z') of
   (EQ, EQ, EQ) -> let (xyzs, xys, xzs, yzs, xs', ys', zs') = zip3By' f g h xs ys zs in ((x,y,z):xyzs, xys, xzs, yzs, xs', ys', zs')
+
+(****) :: (a -> b -> c) -> (a' -> b' -> c') -> (a, a') -> (b, b') -> (c, c')
+f **** g = uncurry (***) . (f *** g)
 

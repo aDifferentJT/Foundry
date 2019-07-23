@@ -47,7 +47,7 @@ import Data.List(intercalate)
 %left '*' '/'
 %%
 
-Proc              :: { Proc }
+Proc              :: { UnsizedProc }
 Proc              : RawProc                               {%
   case $1 of
     RawProc regs insts encTypes regEncs instEncs impls -> do
@@ -71,8 +71,8 @@ Proc              : RawProc                               {%
         (_, _, _, _, (InstType n _):_, _, _)    -> throwGlobalError $ "Instruction " ++ n ++ " has no encoding or implementation"
         (_, _, _, _, _, (InstImpl n vs _):_, _)       -> throwGlobalError $ "Implementation given for unknown instruction " ++ instName n vs
         (_, _, _, _, _, _, (InstEnc n vs _):_)        -> throwGlobalError $ "Encoding given for unknown instruction " ++ instName n vs
-        (xs, [], [], [], [], [], [])                  -> return $ [Inst n ts (vs1, rs) (vs2, e) | (InstType n ts, InstImpl _ vs1 rs, InstEnc _ vs2 e) <- xs]
-      return $ Proc regs'' insts'' encTypes
+        (xs, [], [], [], [], [], [])                  -> return $ [UnsizedInst n ts (vs1, rs) (vs2, e) | (InstType n ts, InstImpl _ vs1 rs, InstEnc _ vs2 e) <- xs]
+      return $ UnsizedProc regs'' insts'' encTypes
 }
 
 RawProc           :: { RawProc }
@@ -112,10 +112,10 @@ EncType           : '<' Type '>' ':' bitsT int            { EncType $2 $6 }
 RegEnc            :: { RegEnc }
 RegEnc            : '<' Var '>' '=' Bits                  { RegEnc $2 $5 }
 
-BitsExpr          :: { BitsExpr }
-BitsExpr          : Bits                                  { ConstBitsExpr $1 }
-                  | '<' Var '>'                           { EncBitsExpr $2 }
-                  | BitsExpr '++' BitsExpr                { ConcatBitsExpr $1 $3 }
+BitsExpr          :: { UnsizedBitsExpr }
+BitsExpr          : Bits                                  { UnsizedConstBitsExpr $1 }
+                  | '<' Var '>'                           { UnsizedEncBitsExpr $2 }
+                  | BitsExpr '++' BitsExpr                { UnsizedConcatBitsExpr $1 $3 }
 
 InstEnc           :: { InstEnc }
 InstEnc           : '<' Var ArgList '>' '=' BitsExpr      {% clearDefined >> return (InstEnc $2 $3 $6) }

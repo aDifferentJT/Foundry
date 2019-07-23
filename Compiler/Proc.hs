@@ -24,7 +24,7 @@ data EncType = EncType Type Int
 
 data BitsExpr
   = ConstBitsExpr [Bit]
-  | EncBitsExpr String
+  | EncBitsExpr Int String
   | ConcatBitsExpr BitsExpr BitsExpr
   deriving Show
 
