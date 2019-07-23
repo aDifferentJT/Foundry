@@ -1,14 +1,12 @@
 {
 {-# LANGUAGE RecordWildCards #-}
 
-module Lexer
+module Parser.Lexer
   ( Token(..)
   , readToken
   ) where
 
-import Prelude hiding (fail)
-
-import LexerMonad
+import Parser.LexerMonad
 
 import Utils (Bit(..))
 

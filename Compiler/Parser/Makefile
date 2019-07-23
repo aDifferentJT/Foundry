@@ -2,7 +2,7 @@
 all: Test
 
 Test: Lexer.hs Parser.hs *.hs
-	ghc -i.:.. Test
+	ghc -i.. Test
 
 Lexer.hs: Lexer.x
 	alex Lexer.x

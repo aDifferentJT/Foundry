@@ -1,11 +1,11 @@
 {
-module Parser (parse) where
+module Parser.Parser (parse) where
 
-import Lexer
-import LexerMonad
+import Parser.AST
+import Parser.Lexer
+import Parser.LexerMonad
 
 import Utils (Bit(..), zipBy, zip3By)
-import AST
 
 import Control.Monad.Except
 import qualified Control.Monad.Trans.State as State

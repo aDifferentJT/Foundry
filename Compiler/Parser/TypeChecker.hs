@@ -1,8 +1,8 @@
-module TypeChecker
+module Parser.TypeChecker
   ( typeCheck
   ) where
 
-import AST
+import Parser.AST
 import Utils ((****))
 
 import Control.Applicative (liftA2)

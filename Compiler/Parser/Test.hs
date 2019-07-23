@@ -1,8 +1,8 @@
 module Main(main) where
 
-import Parser (parse)
-import LexerMonad (runLexer)
-import TypeChecker (typeCheck)
+import Parser.Parser (parse)
+import Parser.LexerMonad (runLexer)
+import Parser.TypeChecker (typeCheck)
 
 import System.Environment (getArgs)
 

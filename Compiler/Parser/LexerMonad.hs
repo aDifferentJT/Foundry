@@ -1,6 +1,6 @@
 {-# LANGUAGE MultiParamTypeClasses, FlexibleInstances, FlexibleContexts, TupleSections, RecordWildCards #-}
 
-module LexerMonad
+module Parser.LexerMonad
   ( AlexInput(..)
   , alexGetByte
   , alexInputPrevChar

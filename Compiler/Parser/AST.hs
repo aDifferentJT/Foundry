@@ -1,4 +1,4 @@
-module AST
+module Parser.AST
   ( RegType(..)
   , InstType(..)
   , RegEnc(..)
