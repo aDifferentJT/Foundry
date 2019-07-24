@@ -1,4 +1,6 @@
 {
+{-# LANGUAGE RecordWildCards, LambdaCase #-}
+
 module Parser.Parser (parse) where
 
 import Parser.AST
@@ -21,13 +23,22 @@ import Data.List(intercalate)
 %token
   registers     { Registers }
   instructions  { Instructions }
+  buttons       { Buttons }
+  memory        { MemoryTok }
   ':'           { Colon }
   '-'           { Hyphen }
   '='           { Equals }
   '+'           { Plus }
   '*'           { Times }
   '/'           { Slash }
+  '&'           { And }
+  '|'           { Or }
+  '^'           { Xor }
   '++'          { Concat }
+  '=='          { Equality }
+  '&&'          { LogicalAnd }
+  '||'          { LogicalOr }
+  '?'           { Question }
   '<-'          { LeftArrow }
   '<'           { OpenAngle }
   '>'           { CloseAngle }
@@ -35,6 +46,8 @@ import Data.List(intercalate)
   '}'           { CloseCurly }
   '('           { OpenParen }
   ')'           { CloseParen }
+  '['           { OpenSquare }
+  ']'           { CloseSquare }
   bits          { Bits $$ }
   int           { Int $$ }
   varTok        { VarTok $$ }
@@ -42,19 +55,28 @@ import Data.List(intercalate)
   bitsT         { BitsTok }
   intT          { IntTok }
   instT         { InstTok }
+  buttonT       { ButtonTok }
+  ramT          { RAMTok }
 
+%right '?'
+%left ':'
+%left '++'
 %left '+' '-'
 %left '*' '/'
+%left '&' '|' '^'
+%left '=='
+%left '&&' '||'
 %%
 
 Proc              :: { UnsizedProc }
-Proc              : RawProc                               {%
+Proc              : RawProc                                      {%
   case $1 of
-    RawProc regs insts encTypes regEncs instEncs impls -> do
+    RawProc{..} -> do
       regs' <- case regs of
         []  -> throwGlobalError "No register block"
         [x] -> return x
         _   -> throwGlobalError "More than one register block"
+      let regEncs = filter (\case RegEnc _ _ -> True; _ -> False) encs
       regs'' <- case zipBy (\(RegType n _) -> n) (\(RegEnc n _) -> n) regs' regEncs of
         (_, (RegType n _):_, _) -> throwGlobalError $ "Register " ++ n ++ " has no encoding"
         (_, _, (RegEnc n _):_) -> throwGlobalError $ "Encoding given for unknown register " ++ n
@@ -63,99 +85,152 @@ Proc              : RawProc                               {%
                  []  -> throwGlobalError "No instruction block"
                  [x] -> return x
                  _   -> throwGlobalError "More than one instruction block"
+      let instEncs = filter (\case InstEnc _ _ _ -> True; _ -> False) encs
+      let instImpls = filter (\case InstImpl _ _ _ -> True; _ -> False) impls
       let instName n vs = intercalate " " (n : ["<" ++ v ++ ">" | v <- vs])
-      insts'' <- case zip3By (\(InstType n _) -> n) (\(InstImpl n _ _) -> n) (\(InstEnc n _ _) -> n) insts' impls instEncs of
-        (_, (InstType n _, _):_, _, _, _, _, _) -> throwGlobalError $ "Instruction " ++ n ++ " has no encoding"
-        (_, _, (InstType n _, _):_, _, _, _, _) -> throwGlobalError $ "Instruction " ++ n ++ " has no implementation"
-        (_, _, _, (InstImpl n vs _, _):_, _, _, _)    -> throwGlobalError $ "Implementation and encoding given for unknown instruction " ++ instName n vs
-        (_, _, _, _, (InstType n _):_, _, _)    -> throwGlobalError $ "Instruction " ++ n ++ " has no encoding or implementation"
-        (_, _, _, _, _, (InstImpl n vs _):_, _)       -> throwGlobalError $ "Implementation given for unknown instruction " ++ instName n vs
-        (_, _, _, _, _, _, (InstEnc n vs _):_)        -> throwGlobalError $ "Encoding given for unknown instruction " ++ instName n vs
-        (xs, [], [], [], [], [], [])                  -> return $ [UnsizedInst n ts (vs1, rs) (vs2, e) | (InstType n ts, InstImpl _ vs1 rs, InstEnc _ vs2 e) <- xs]
-      return $ UnsizedProc regs'' insts'' encTypes
+      insts'' <- case zip3By (\(InstType n _) -> n) (\(InstImpl n _ _) -> n) (\(InstEnc n _ _) -> n) insts' instImpls instEncs of
+        (_, (InstType n _, _):_, _, _, _, _, _)    -> throwGlobalError $ "Instruction " ++ n ++ " has no encoding"
+        (_, _, (InstType n _, _):_, _, _, _, _)    -> throwGlobalError $ "Instruction " ++ n ++ " has no implementation"
+        (_, _, _, (InstImpl n vs _, _):_, _, _, _) -> throwGlobalError $ "Implementation and encoding given for unknown instruction " ++ instName n vs
+        (_, _, _, _, (InstType n _):_, _, _)       -> throwGlobalError $ "Instruction " ++ n ++ " has no encoding or implementation"
+        (_, _, _, _, _, (InstImpl n vs _):_, _)    -> throwGlobalError $ "Implementation given for unknown instruction " ++ instName n vs
+        (_, _, _, _, _, _, (InstEnc n vs _):_)     -> throwGlobalError $ "Encoding given for unknown instruction " ++ instName n vs
+        (xs, [], [], [], [], [], [])               -> return $ [UnsizedInst n ts (vs1, rs) (vs2, e) | (InstType n ts, InstImpl _ vs1 rs, InstEnc _ vs2 e) <- xs]
+      buttons' <- case buttons of
+        []  -> throwGlobalError "No register block"
+        [x] -> return x
+        _   -> throwGlobalError "More than one register block"
+      let buttonImpls = filter (\case ButtonImpl _ _ -> True; _ -> False) impls
+      buttons'' <- case zipBy (\(ButtonType n _) -> n) (\(ButtonImpl n _) -> n) buttons' buttonImpls of
+        (_, (ButtonType n _):_, _) -> throwGlobalError $ "Button " ++ n ++ " has no implementation"
+        (_, _, (ButtonImpl n _):_) -> throwGlobalError $ "Implementation given for unknown button " ++ n
+        (xs, [], []) -> return $ [Button n t rs | (ButtonType n t, ButtonImpl _ rs) <- xs]
+      memory' <- case memory of
+        []  -> throwGlobalError "No register block"
+        [x] -> return x
+        _   -> throwGlobalError "More than one register block"
+      return $ UnsizedProc regs'' insts'' buttons'' memory' encTypes
 }
 
 RawProc           :: { RawProc }
-RawProc           : {- empty -}                           { RawProc [] [] [] [] [] [] }
-                  | RegTypes RawProc                      { case $2 of RawProc regs insts encTypes regEncs instEncs impls -> RawProc ($1:regs) insts encTypes regEncs instEncs impls }
-                  | InstTypes RawProc                     { case $2 of RawProc regs insts encTypes regEncs instEncs impls -> RawProc regs ($1:insts) encTypes regEncs instEncs impls }
-                  | EncType RawProc                       { case $2 of RawProc regs insts encTypes regEncs instEncs impls -> RawProc regs insts ($1:encTypes) regEncs instEncs impls }
-                  | RegEnc RawProc                        { case $2 of RawProc regs insts encTypes regEncs instEncs impls -> RawProc regs insts encTypes ($1:regEncs) instEncs impls }
-                  | InstEnc RawProc                       { case $2 of RawProc regs insts encTypes regEncs instEncs impls -> RawProc regs insts encTypes regEncs ($1:instEncs) impls }
-                  | InstImpl RawProc                      { case $2 of RawProc regs insts encTypes regEncs instEncs impls -> RawProc regs insts encTypes regEncs instEncs ($1:impls) }
+RawProc           : {- empty -}                                  { RawProc [] [] [] [] [] [] [] }
+                  | RegTypes RawProc                             { $2 { regs     = $1 : regs     $2 } }
+                  | InstTypes RawProc                            { $2 { insts    = $1 : insts    $2 } }
+                  | ButtonTypes RawProc                          { $2 { buttons  = $1 : buttons  $2 } }
+                  | MemoryTypes RawProc                          { $2 { memory   = $1 : memory   $2 } }
+                  | EncType RawProc                              { $2 { encTypes = $1 : encTypes $2 } }
+                  | Enc RawProc                                  { $2 { encs     = $1 : encs     $2 } }
+                  | Impl RawProc                                 { $2 { impls    = $1 : impls    $2 } }
 
 Var               :: { String }
-Var               : varTok                                { $1 }
+Var               : varTok                                       { $1 }
 
 Type              :: { Type }
-Type              : regT int                              { RegT $2 }
-                  | bitsT int                             { BitsT $2 }
-                  | intT int                              { IntT $2 }
-                  | instT                                 { InstT }
-
-Bits              :: { [Bit] }
-Bits              : bits                                  { $1 }
-
-RegType           :: { RegType }
-RegType           : '-' Var ':' regT int                  { RegType $2 $5 }
-
-RegTypeList       :: { [RegType] }
-RegTypeList       : {- empty -}                           { [] }
-                  | RegTypeList RegType                   { $2 : $1 }
-
-RegTypes          :: { [RegType] }
-RegTypes          : registers '{' RegTypeList '}'         { $3 }
-
-EncType           :: { EncType }
-EncType           : '<' Type '>' ':' bitsT int            { EncType $2 $6 }
-
-RegEnc            :: { RegEnc }
-RegEnc            : '<' Var '>' '=' Bits                  { RegEnc $2 $5 }
+Type              : regT int                                     { RegT $2 }
+                  | bitsT int                                    { BitsT $2 }
+                  | intT int                                     { IntT $2 }
+                  | instT                                        { InstT }
 
 BitsExpr          :: { UnsizedBitsExpr }
-BitsExpr          : Bits                                  { UnsizedConstBitsExpr $1 }
-                  | '<' Var '>'                           { UnsizedEncBitsExpr $2 }
-                  | BitsExpr '++' BitsExpr                { UnsizedConcatBitsExpr $1 $3 }
+BitsExpr          : '(' BitsExpr ')'                             { $2 }
+                  | bits                                         { UnsizedConstBitsExpr $1 }
+                  | '<' Var '>'                                  {% checkRegDefined $2 >> return (UnsizedEncBitsExpr $2) }
+                  | BitsExpr '++' BitsExpr                       { UnsizedConcatBitsExpr $1 $3 }
+                  | BitsExpr '&' BitsExpr                        { UnsizedAndBitsExpr $1 $3 }
+                  | BitsExpr '|' BitsExpr                        { UnsizedOrBitsExpr $1 $3 }
+                  | BitsExpr '^' BitsExpr                        { UnsizedXorBitsExpr $1 $3 }
 
-InstEnc           :: { InstEnc }
-InstEnc           : '<' Var ArgList '>' '=' BitsExpr      {% clearDefined >> fmap (InstEnc $2 $3) (splitBitsExpr $6) }
+ArgTypeList       :: { [Type] }
+ArgTypeList       : {- empty -}                                  { [] }
+                  | ArgTypeList '<' Type '>'                     { $3 : $1 }
 
-TypeList          :: { [Type] }
-TypeList          : {- empty -}                           { [] }
-                  | TypeList '<' Type '>'                 { $3 : $1 }
+RegType           :: { RegType }
+RegType           : '-' Var ':' regT int                         {% defineReg $2 >> return (RegType $2 $5) }
 
 InstType          :: { InstType }
-InstType          : '-' Var TypeList                      { InstType $2 (reverse $3) }
+InstType          : '-' Var ArgTypeList                          {% defineInst $2 >> return (InstType $2 (reverse $3)) }
 
-InstTypeList      :: { [InstType] }
-InstTypeList      : {- empty -}                           { [] }
-                  | InstTypeList InstType                 { $2 : $1 }
+ButtonType        :: { ButtonType }
+ButtonType        : '-' Var ':' buttonT int                      {% defineButton $2 >> return (ButtonType $2 $5) }
+
+MemoryType        :: { Memory }
+MemoryType        : '-' Var ':' ramT int int                     {% defineMemory $2 >> return (Memory $2 $5 $6) }
+
+List(p)           : {- empty -}                                  { [] }
+                  | List(p) p                                    { $2 : $1 }
+
+RegTypes          :: { [RegType] }
+RegTypes          : registers '{' List(RegType) '}'              { $3 }
 
 InstTypes         :: { [InstType] }
-InstTypes         : instructions '{' InstTypeList '}'     { $3 }
+InstTypes         : instructions '{' List(InstType) '}'          { $3 }
+
+ButtonTypes       :: { [ButtonType] }
+ButtonTypes       : buttons '{' List(ButtonType) '}'             { $3 }
+
+MemoryTypes       :: { [Memory] }
+MemoryTypes       : memory '{' List(MemoryType) '}'              { $3 }
+
+EncType           :: { EncType }
+EncType           : '<' Type '>' ':' bitsT int                   { EncType $2 $6 }
+
+Arg               :: { String }
+Arg               : '<' Var '>'                                  {% defineLocalVar $2 >> return $2 }
+
+Enc               :: { Enc }
+Enc               : '<' Var List(Arg) '>' '=' BitsExpr           {%
+  do
+    clearLocalVars
+    defn <- getIdentifierDefn $2
+    case defn of
+      RegDefn    -> do
+        unless (null $3) . throwLocalError 4 $ "Encoding for register " ++ $2 ++ " has arguments"
+        case $6 of
+          UnsizedConstBitsExpr bs -> return $ RegEnc $2 bs
+          _                       -> throwLocalError 1 $ "Encoding for register " ++ $2 ++ " is not constant"
+      InstDefn   -> fmap (InstEnc $2 $3) (splitBitsExpr $6)
+      ButtonDefn -> throwLocalError 1 $ "Encoding given for button " ++ $2
+      MemoryDefn -> throwLocalError 1 $ "Encoding given for memory " ++ $2
+}
+
+BoolExpr          :: { BoolExpr }
+BoolExpr          : Expr '==' Expr                               { EqualityExpr $1 $3 }
+                  | BoolExpr '&&' BoolExpr                       { LogicalAndExpr $1 $3 }
+                  | BoolExpr '||' BoolExpr                       { LogicalOrExpr $1 $3 }
 
 Expr              :: { Expr }
-Expr              : '(' Expr ')'                          { $2 }
-                  | Var                                   {% checkDefined $1 >> return (VarExpr $1) }
-                  | int                                   { ConstExpr $1 }
-                  | Expr '+' Expr                         { OpExpr Add $1 $3 }
-                  | Expr '-' Expr                         { OpExpr Sub $1 $3 }
-                  | Expr '*' Expr                         { OpExpr Mul $1 $3 }
-                  | Expr '/' Expr                         { OpExpr Div $1 $3 }
+Expr              : '(' Expr ')'                                 { $2 }
+                  | Var                                          {% checkRegDefined $1 >> return (VarExpr $1) }
+                  | Var '[' Expr ']'                             {% checkMemoryDefined $1 >> return (MemAccessExpr $1 $3) }
+                  | int                                          { ConstExpr $1 }
+                  | bits                                         { BinaryConstExpr $1 }
+                  | Expr '+' Expr                                { OpExpr Add $1 $3 }
+                  | Expr '-' Expr                                { OpExpr Sub $1 $3 }
+                  | Expr '*' Expr                                { OpExpr Mul $1 $3 }
+                  | Expr '/' Expr                                { OpExpr Div $1 $3 }
+                  | Expr '++' Expr                               { OpExpr ConcatBits $1 $3 }
+                  | Expr '&' Expr                                { OpExpr BitwiseAnd $1 $3 }
+                  | Expr '|' Expr                                { OpExpr BitwiseOr $1 $3 }
+                  | Expr '^' Expr                                { OpExpr BitwiseXor $1 $3 }
+                  | BoolExpr '?' Expr ':' Expr                   { TernaryExpr $1 $3 $5 }
 
-ArgList           :: { [String] }
-ArgList           : {- empty -}                           { [] }
-                  | ArgList '<' Var '>'                   {% defineVar $3 >> return ($3 : $1) }
+ImplRule          :: { ImplRule }
+ImplRule          : Var '<-' Expr                                {% checkRegDefined $1 >> return (ImplRule (VarLValue $1) $3) }
+                  | Var '[' Expr ']' '<-' Expr                   {% checkMemoryDefined $1 >> return (ImplRule (MemAccessLValue $1 $3) $6) }
 
-InstImplRule      :: { InstImplRule }
-InstImplRule      : Var '<-' Expr                         {% checkDefined $1 >> return (InstImplRule $1 $3) }
-
-InstImplRuleList  :: { [InstImplRule] }
-InstImplRuleList  : {- empty -}                           { [] }
-                  | InstImplRuleList InstImplRule         { $2 : $1 }
-
-InstImpl          :: { InstImpl }
-InstImpl          : Var ArgList '{' InstImplRuleList '}'  {% clearDefined >> return (InstImpl $1 (reverse $2) $4) }
+Impl              :: { Impl }
+Impl              : Var List(Arg) '{' List(ImplRule) '}'         {%
+  do
+    clearLocalVars
+    defn <- getIdentifierDefn $1
+    case defn of
+      RegDefn    -> throwLocalError 1 $ "Implementation given for register " ++ $1
+      InstDefn   -> return (InstImpl $1 (reverse $2) $4)
+      ButtonDefn -> do
+        unless (null $2) . throwLocalError 4 $ "Encoding for button " ++ $1 ++ " has arguments"
+        return (ButtonImpl $1 $4)
+      MemoryDefn -> throwLocalError 1 $ "Implementation given for memory " ++ $1
+}
 
 {
 splitBitsExpr' :: UnsizedBitsExpr -> ([Bit], UnsizedBitsExpr)
@@ -164,6 +239,9 @@ splitBitsExpr' (UnsizedEncBitsExpr v)        = ([], UnsizedEncBitsExpr v)
 splitBitsExpr' (UnsizedConcatBitsExpr e1 e2) = case splitBitsExpr' e1 of
   (bs1, UnsizedConstBitsExpr []) -> let (bs2, e2') = splitBitsExpr' e2 in (bs1 ++ bs2, e2')
   (bs1, e1')                     -> (bs1, UnsizedConcatBitsExpr e1' e2)
+splitBitsExpr' (UnsizedAndBitsExpr e1 e2)    = ([], UnsizedAndBitsExpr e1 e2)
+splitBitsExpr' (UnsizedOrBitsExpr e1 e2)     = ([], UnsizedOrBitsExpr e1 e2)
+splitBitsExpr' (UnsizedXorBitsExpr e1 e2)    = ([], UnsizedXorBitsExpr e1 e2)
 
 splitBitsExpr :: UnsizedBitsExpr -> LexerMonad ([Bit], UnsizedBitsExpr)
 splitBitsExpr e = do

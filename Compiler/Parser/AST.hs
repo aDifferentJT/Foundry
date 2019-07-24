@@ -1,10 +1,10 @@
 module Parser.AST
   ( RegType(..)
   , InstType(..)
-  , RegEnc(..)
+  , ButtonType(..)
   , UnsizedBitsExpr(..)
-  , InstEnc(..)
-  , InstImpl(..)
+  , Enc(..)
+  , Impl(..)
   , RawProc(..)
   , UnsizedInst(..)
   , UnsizedProc(..)
@@ -13,9 +13,13 @@ module Parser.AST
   , BitsExpr(..)
   , Op(..)
   , Expr(..)
-  , InstImplRule(..)
+  , BoolExpr(..)
+  , LValue(..)
+  , ImplRule(..)
   , Reg(..)
   , Inst(..)
+  , Button(..)
+  , Memory(..)
   , Proc(..)
   ) where
 
@@ -29,27 +33,42 @@ data RegType = RegType String Int
 data InstType = InstType String [Type]
   deriving Show
 
-data RegEnc = RegEnc String [Bit]
+data ButtonType = ButtonType String Int
   deriving Show
 
 data UnsizedBitsExpr
   = UnsizedConstBitsExpr [Bit]
   | UnsizedEncBitsExpr String
   | UnsizedConcatBitsExpr UnsizedBitsExpr UnsizedBitsExpr
+  | UnsizedAndBitsExpr UnsizedBitsExpr UnsizedBitsExpr
+  | UnsizedOrBitsExpr UnsizedBitsExpr UnsizedBitsExpr
+  | UnsizedXorBitsExpr UnsizedBitsExpr UnsizedBitsExpr
   deriving Show
 
-data InstEnc = InstEnc String [String] ([Bit], UnsizedBitsExpr)
+data Enc
+  = RegEnc String [Bit]
+  | InstEnc String [String] ([Bit], UnsizedBitsExpr)
   deriving Show
 
-data InstImpl = InstImpl String [String] [InstImplRule]
+data Impl
+  = InstImpl String [String] [ImplRule]
+  | ButtonImpl String [ImplRule]
   deriving Show
 
-data RawProc = RawProc [[RegType]] [[InstType]] [EncType] [RegEnc] [InstEnc] [InstImpl]
+data RawProc = RawProc 
+  { regs     :: [[RegType]]
+  , insts    :: [[InstType]]
+  , buttons  :: [[ButtonType]]
+  , memory   :: [[Memory]]
+  , encTypes :: [EncType]
+  , encs     :: [Enc]
+  , impls    :: [Impl]
+  }
   deriving Show
 
-data UnsizedInst = UnsizedInst String [Type] ([String], [InstImplRule]) ([String], ([Bit], UnsizedBitsExpr))
+data UnsizedInst = UnsizedInst String [Type] ([String], [ImplRule]) ([String], ([Bit], UnsizedBitsExpr))
   deriving Show
 
-data UnsizedProc = UnsizedProc [Reg] [UnsizedInst] [EncType]
+data UnsizedProc = UnsizedProc [Reg] [UnsizedInst] [Button] [Memory] [EncType]
   deriving Show
 
