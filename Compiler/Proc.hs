@@ -39,15 +39,15 @@ sizeOfEnc (ConstBitsExpr bs)     = length bs
 sizeOfEnc (EncBitsExpr n _)      = n
 sizeOfEnc (ConcatBitsExpr e1 e2) = sizeOfEnc e1 + sizeOfEnc e2
 
-findVarInEnc :: String -> BitsExpr -> Maybe (Int, Int)
-findVarInEnc var (ConstBitsExpr _) = Nothing
-findVarInEnc var (EncBitsExpr n var')
-  | var == var' = Just (0, n - 1)
+findVarInEnc :: String -> Int -> BitsExpr -> Maybe (Int, Int)
+findVarInEnc _   _   (ConstBitsExpr _) = Nothing
+findVarInEnc var off (EncBitsExpr n var')
+  | var == var' = Just (off, off + n - 1)
   | otherwise   = Nothing
-findVarInEnc var (ConcatBitsExpr e1 e2) =
-  case findVarInEnc var e1 of
+findVarInEnc var off (ConcatBitsExpr e1 e2) =
+  case findVarInEnc var off e1 of
     Just res -> Just res
-    Nothing  -> let n = sizeOfEnc e1 in (\(i, j) -> (i + n, j + n)) <$> findVarInEnc var e2
+    Nothing  -> findVarInEnc var (off + sizeOfEnc e1) e2
 
 data Op
   = Add
@@ -94,9 +94,15 @@ data Inst = Inst String [Type] ([String], [ImplRule]) ([String], ([Bit], BitsExp
 data Button = Button String Int [ImplRule]
   deriving Show
 
-data Memory = Memory String Int Int -- name, data width, register width
+data Memory = Memory String Int Int -- name, data width, address width
   deriving Show
 
-data Proc = Proc [Reg] [Inst] [Button] [Memory] [EncType]
+data Proc = Proc
+  { regs     :: [Reg]
+  , insts    :: [Inst]
+  , buttons  :: [Button]
+  , memorys  :: [Memory]
+  , encTypes ::[EncType]
+  }
   deriving Show
 

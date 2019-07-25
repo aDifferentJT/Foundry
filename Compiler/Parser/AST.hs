@@ -56,13 +56,13 @@ data Impl
   deriving Show
 
 data RawProc = RawProc 
-  { regs     :: [[RegType]]
-  , insts    :: [[InstType]]
-  , buttons  :: [[ButtonType]]
-  , memory   :: [[Memory]]
-  , encTypes :: [EncType]
-  , encs     :: [Enc]
-  , impls    :: [Impl]
+  { rawRegs     :: [[RegType]]
+  , rawInsts    :: [[InstType]]
+  , rawButtons  :: [[ButtonType]]
+  , rawMemory   :: [[Memory]]
+  , rawEncTypes :: [EncType]
+  , rawEncs     :: [Enc]
+  , rawImpls    :: [Impl]
   }
   deriving Show
 

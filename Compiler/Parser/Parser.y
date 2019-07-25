@@ -72,21 +72,21 @@ Proc              :: { UnsizedProc }
 Proc              : RawProc                                      {%
   case $1 of
     RawProc{..} -> do
-      regs' <- case regs of
+      regs' <- case rawRegs of
         []  -> throwGlobalError "No register block"
         [x] -> return x
         _   -> throwGlobalError "More than one register block"
-      let regEncs = filter (\case RegEnc _ _ -> True; _ -> False) encs
+      let regEncs = filter (\case RegEnc _ _ -> True; _ -> False) rawEncs
       regs'' <- case zipBy (\(RegType n _) -> n) (\(RegEnc n _) -> n) regs' regEncs of
         (_, (RegType n _):_, _) -> throwGlobalError $ "Register " ++ n ++ " has no encoding"
         (_, _, (RegEnc n _):_) -> throwGlobalError $ "Encoding given for unknown register " ++ n
         (xs, [], []) -> return $ [Reg n t e | (RegType n t, RegEnc _ e) <- xs]
-      insts' <- case insts of
+      insts' <- case rawInsts of
                  []  -> throwGlobalError "No instruction block"
                  [x] -> return x
                  _   -> throwGlobalError "More than one instruction block"
-      let instEncs = filter (\case InstEnc _ _ _ -> True; _ -> False) encs
-      let instImpls = filter (\case InstImpl _ _ _ -> True; _ -> False) impls
+      let instEncs = filter (\case InstEnc _ _ _ -> True; _ -> False) rawEncs
+      let instImpls = filter (\case InstImpl _ _ _ -> True; _ -> False) rawImpls
       let instName n vs = intercalate " " (n : ["<" ++ v ++ ">" | v <- vs])
       insts'' <- case zip3By (\(InstType n _) -> n) (\(InstImpl n _ _) -> n) (\(InstEnc n _ _) -> n) insts' instImpls instEncs of
         (_, (InstType n _, _):_, _, _, _, _, _)    -> throwGlobalError $ "Instruction " ++ n ++ " has no encoding"
@@ -96,31 +96,31 @@ Proc              : RawProc                                      {%
         (_, _, _, _, _, (InstImpl n vs _):_, _)    -> throwGlobalError $ "Implementation given for unknown instruction " ++ instName n vs
         (_, _, _, _, _, _, (InstEnc n vs _):_)     -> throwGlobalError $ "Encoding given for unknown instruction " ++ instName n vs
         (xs, [], [], [], [], [], [])               -> return $ [UnsizedInst n ts (vs1, rs) (vs2, e) | (InstType n ts, InstImpl _ vs1 rs, InstEnc _ vs2 e) <- xs]
-      buttons' <- case buttons of
+      buttons' <- case rawButtons of
         []  -> throwGlobalError "No register block"
         [x] -> return x
         _   -> throwGlobalError "More than one register block"
-      let buttonImpls = filter (\case ButtonImpl _ _ -> True; _ -> False) impls
+      let buttonImpls = filter (\case ButtonImpl _ _ -> True; _ -> False) rawImpls
       buttons'' <- case zipBy (\(ButtonType n _) -> n) (\(ButtonImpl n _) -> n) buttons' buttonImpls of
         (_, (ButtonType n _):_, _) -> throwGlobalError $ "Button " ++ n ++ " has no implementation"
         (_, _, (ButtonImpl n _):_) -> throwGlobalError $ "Implementation given for unknown button " ++ n
         (xs, [], []) -> return $ [Button n t rs | (ButtonType n t, ButtonImpl _ rs) <- xs]
-      memory' <- case memory of
+      memory' <- case rawMemory of
         []  -> throwGlobalError "No register block"
         [x] -> return x
         _   -> throwGlobalError "More than one register block"
-      return $ UnsizedProc regs'' insts'' buttons'' memory' encTypes
+      return $ UnsizedProc regs'' insts'' buttons'' memory' rawEncTypes
 }
 
 RawProc           :: { RawProc }
 RawProc           : {- empty -}                                  { RawProc [] [] [] [] [] [] [] }
-                  | RegTypes RawProc                             { $2 { regs     = $1 : regs     $2 } }
-                  | InstTypes RawProc                            { $2 { insts    = $1 : insts    $2 } }
-                  | ButtonTypes RawProc                          { $2 { buttons  = $1 : buttons  $2 } }
-                  | MemoryTypes RawProc                          { $2 { memory   = $1 : memory   $2 } }
-                  | EncType RawProc                              { $2 { encTypes = $1 : encTypes $2 } }
-                  | Enc RawProc                                  { $2 { encs     = $1 : encs     $2 } }
-                  | Impl RawProc                                 { $2 { impls    = $1 : impls    $2 } }
+                  | RegTypes RawProc                             { $2 { rawRegs     = $1 : rawRegs     $2 } }
+                  | InstTypes RawProc                            { $2 { rawInsts    = $1 : rawInsts    $2 } }
+                  | ButtonTypes RawProc                          { $2 { rawButtons  = $1 : rawButtons  $2 } }
+                  | MemoryTypes RawProc                          { $2 { rawMemory   = $1 : rawMemory   $2 } }
+                  | EncType RawProc                              { $2 { rawEncTypes = $1 : rawEncTypes $2 } }
+                  | Enc RawProc                                  { $2 { rawEncs     = $1 : rawEncs     $2 } }
+                  | Impl RawProc                                 { $2 { rawImpls    = $1 : rawImpls    $2 } }
 
 Var               :: { String }
 Var               : varTok                                       { $1 }
