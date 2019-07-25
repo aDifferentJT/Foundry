@@ -2,6 +2,8 @@ module Proc
   ( Type(..)
   , EncType(..)
   , BitsExpr(..)
+  , sizeOfEnc
+  , findVarInEnc
   , Op(..)
   , Expr(..)
   , BoolExpr(..)
@@ -32,6 +34,21 @@ data BitsExpr
   | ConcatBitsExpr BitsExpr BitsExpr
   deriving Show
 
+sizeOfEnc :: BitsExpr -> Int
+sizeOfEnc (ConstBitsExpr bs)     = length bs
+sizeOfEnc (EncBitsExpr n _)      = n
+sizeOfEnc (ConcatBitsExpr e1 e2) = sizeOfEnc e1 + sizeOfEnc e2
+
+findVarInEnc :: String -> BitsExpr -> Maybe (Int, Int)
+findVarInEnc var (ConstBitsExpr _) = Nothing
+findVarInEnc var (EncBitsExpr n var')
+  | var == var' = Just (0, n - 1)
+  | otherwise   = Nothing
+findVarInEnc var (ConcatBitsExpr e1 e2) =
+  case findVarInEnc var e1 of
+    Just res -> Just res
+    Nothing  -> let n = sizeOfEnc e1 in (\(i, j) -> (i + n, j + n)) <$> findVarInEnc var e2
+
 data Op
   = Add
   | Sub
@@ -51,6 +68,7 @@ data BoolExpr
 
 data Expr
   = VarExpr String
+  | RegExpr String
   | MemAccessExpr String Expr
   | ConstExpr Int
   | BinaryConstExpr [Bit]
@@ -60,6 +78,7 @@ data Expr
 
 data LValue
   = VarLValue String
+  | RegLValue String
   | MemAccessLValue String Expr
   deriving Show
 

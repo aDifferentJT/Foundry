@@ -134,7 +134,7 @@ Type              : regT int                                     { RegT $2 }
 BitsExpr          :: { UnsizedBitsExpr }
 BitsExpr          : '(' BitsExpr ')'                             { $2 }
                   | bits                                         { UnsizedConstBitsExpr $1 }
-                  | '<' Var '>'                                  {% checkRegDefined $2 >> return (UnsizedEncBitsExpr $2) }
+                  | '<' Var '>'                                  {% checkLocalVar $2 >> return (UnsizedEncBitsExpr $2) }
                   | BitsExpr '++' BitsExpr                       { UnsizedConcatBitsExpr $1 $3 }
                   | BitsExpr '&' BitsExpr                        { UnsizedAndBitsExpr $1 $3 }
                   | BitsExpr '|' BitsExpr                        { UnsizedOrBitsExpr $1 $3 }
@@ -200,7 +200,19 @@ BoolExpr          : Expr '==' Expr                               { EqualityExpr 
 
 Expr              :: { Expr }
 Expr              : '(' Expr ')'                                 { $2 }
-                  | Var                                          {% checkRegDefined $1 >> return (VarExpr $1) }
+                  | Var                                          {%
+  do
+    loc <- isLocalVar $1
+    if loc
+    then return $ VarExpr $1
+    else do
+      defn <- getIdentifierDefn $1
+      case defn of
+        RegDefn    -> return $ RegExpr $1
+        InstDefn   -> throwLocalError 1 $ $1 ++ " is an instruction, expected a register or a local variable"
+        ButtonDefn -> throwLocalError 1 $ $1 ++ " is a button, expected a register or a local variable"
+        MemoryDefn -> throwLocalError 1 $ $1 ++ " is a memory, expected a register or a local variable"
+}
                   | Var '[' Expr ']'                             {% checkMemoryDefined $1 >> return (MemAccessExpr $1 $3) }
                   | int                                          { ConstExpr $1 }
                   | bits                                         { BinaryConstExpr $1 }
@@ -215,7 +227,19 @@ Expr              : '(' Expr ')'                                 { $2 }
                   | BoolExpr '?' Expr ':' Expr                   { TernaryExpr $1 $3 $5 }
 
 ImplRule          :: { ImplRule }
-ImplRule          : Var '<-' Expr                                {% checkRegDefined $1 >> return (ImplRule (VarLValue $1) $3) }
+ImplRule          : Var '<-' Expr                                {%
+  do
+    loc <- isLocalVar $1
+    if loc
+    then return $ ImplRule (VarLValue $1) $3
+    else do
+      defn <- getIdentifierDefn $1
+      case defn of
+        RegDefn    -> return $ ImplRule (RegLValue $1) $3
+        InstDefn   -> throwLocalError 1 $ $1 ++ " is an instruction, expected a register or a local variable"
+        ButtonDefn -> throwLocalError 1 $ $1 ++ " is a button, expected a register or a local variable"
+        MemoryDefn -> throwLocalError 1 $ $1 ++ " is a memory, expected a register or a local variable"
+}
                   | Var '[' Expr ']' '<-' Expr                   {% checkMemoryDefined $1 >> return (ImplRule (MemAccessLValue $1 $3) $6) }
 
 Impl              :: { Impl }

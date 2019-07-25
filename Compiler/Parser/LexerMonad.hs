@@ -14,6 +14,8 @@ module Parser.LexerMonad
   , defineInst
   , defineButton
   , defineMemory
+  , isLocalVar
+  , checkLocalVar
   , checkRegDefined
   , checkInstDefined
   , checkButtonDefined
@@ -179,17 +181,34 @@ defineMemory var = do
     Just MemoryDefn -> throwLocalError 2 $ "Memory " ++ var ++ " has the same name as a previously defined memory"
     Nothing     -> State.put $ LexerState{ stateGlobalIdents = Map.insert var MemoryDefn stateGlobalIdents, .. }
 
+isLocalVar :: String -> LexerMonad Bool
+isLocalVar var = do
+  LexerState{..} <- State.get
+  return $ Set.member var stateLocalVars
+
+checkLocalVar :: String -> LexerMonad ()
+checkLocalVar var = do
+  LexerState{..} <- State.get
+  if Set.member var stateLocalVars
+  then return ()
+  else case Map.lookup var stateGlobalIdents of
+    Just RegDefn    -> throwLocalError 1 $ var ++ " is a register, expected a local variable"
+    Just InstDefn   -> throwLocalError 1 $ var ++ " is an instruction, expected a local variable"
+    Just ButtonDefn -> throwLocalError 1 $ var ++ " is a button, expected a local variable"
+    Just MemoryDefn -> throwLocalError 1 $ var ++ " is a memory, expected a local variable"
+    Nothing     -> throwLocalError 1 $ "Variable " ++ var ++ " not defined"
+
 checkRegDefined :: String -> LexerMonad ()
 checkRegDefined var = do
   LexerState{..} <- State.get
   if Set.member var stateLocalVars
-  then return ()
+  then throwLocalError 1 $ var ++ " is a local variable, expected a register"
   else case Map.lookup var stateGlobalIdents of
     Just RegDefn    -> return ()
     Just InstDefn   -> throwLocalError 1 $ var ++ " is an instruction, expected a register"
     Just ButtonDefn -> throwLocalError 1 $ var ++ " is a button, expected a register"
     Just MemoryDefn -> throwLocalError 1 $ var ++ " is a memory, expected a register"
-    Nothing     -> throwLocalError 1 $ "Register/variable " ++ var ++ " not defined"
+    Nothing     -> throwLocalError 1 $ "Register " ++ var ++ " not defined"
 
 checkInstDefined :: String -> LexerMonad ()
 checkInstDefined var = do

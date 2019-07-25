@@ -1,8 +1,9 @@
+GHC_FLAGS=-fwarn-incomplete-patterns -fwarn-incomplete-uni-patterns
 
 all: Test
 
 Test: Lexer.hs Parser.hs ../*.hs
-	ghc -i.. Test
+	ghc ${GHC_FLAGS} -i.. Test
 
 Lexer.hs: Lexer.x
 	alex -g Lexer.x
