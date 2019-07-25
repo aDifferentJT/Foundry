@@ -1,4 +1,5 @@
 {
+{-# OPTIONS_GHC -w #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Parser.Lexer
@@ -10,7 +11,6 @@ import Parser.LexerMonad
 
 import Utils (Bit(..))
 
-import Control.Monad.Except
 import qualified Control.Monad.Trans.State as State
 }
 
@@ -109,6 +109,6 @@ readToken = do
     AlexEOF                -> return EOF
     AlexError input'       -> State.put LexerState{ stateInput = input', .. } >> throwLocalError 0 "Could not lex token"
     AlexSkip input' _      -> State.put LexerState{ stateInput = input', .. } >> readToken
-    AlexToken input' len t -> State.put LexerState{ stateInput = input' { tokPos = take 5 $ charPos stateInput : tokPos input' }, .. } >> (t . take len . str $ stateInput)
+    AlexToken input' len t -> State.put LexerState{ stateInput = input' { tokPos = take 10 $ charPos stateInput : tokPos input' }, .. } >> (t . take len . str $ stateInput)
 }
 

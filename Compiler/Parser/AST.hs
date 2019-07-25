@@ -6,26 +6,17 @@ module Parser.AST
   , Enc(..)
   , Impl(..)
   , RawProc(..)
-  , UnsizedInst(..)
-  , UnsizedProc(..)
-  , Type(..)
-  , EncType(..)
-  , BitsExpr(..)
-  , Op(..)
-  , Expr(..)
-  , BoolExpr(..)
-  , LValue(..)
-  , ImplRule(..)
-  , Reg(..)
-  , Inst(..)
-  , Button(..)
-  , Memory(..)
-  , Proc(..)
   ) where
 
 import Proc
+  ( Type
+  , EncType
+  , BitsExpr
+  , ImplRule
+  , Memory
+  )
 
-import Utils (Bit(..))
+import Utils (Bit)
 
 data RegType = RegType String Int
   deriving Show
@@ -47,7 +38,7 @@ data UnsizedBitsExpr
 
 data Enc
   = RegEnc String [Bit]
-  | InstEnc String [String] ([Bit], UnsizedBitsExpr)
+  | InstEnc String [String] ([Bit], BitsExpr)
   deriving Show
 
 data Impl
@@ -64,11 +55,5 @@ data RawProc = RawProc
   , rawEncs     :: [Enc]
   , rawImpls    :: [Impl]
   }
-  deriving Show
-
-data UnsizedInst = UnsizedInst String [Type] ([String], [ImplRule]) ([String], ([Bit], UnsizedBitsExpr))
-  deriving Show
-
-data UnsizedProc = UnsizedProc [Reg] [UnsizedInst] [Button] [Memory] [EncType]
   deriving Show
 

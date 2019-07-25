@@ -16,14 +16,14 @@ module Proc
   , Proc(..)
   ) where
 
-import Utils (Bit(..))
+import Utils (Bit)
 
 data Type
   = RegT Int
   | BitsT Int
   | IntT Int
   | InstT
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 
 data EncType = EncType Type Int
   deriving Show
@@ -32,12 +32,18 @@ data BitsExpr
   = ConstBitsExpr [Bit]
   | EncBitsExpr Int String
   | ConcatBitsExpr BitsExpr BitsExpr
+  | AndBitsExpr BitsExpr BitsExpr
+  | OrBitsExpr BitsExpr BitsExpr
+  | XorBitsExpr BitsExpr BitsExpr
   deriving Show
 
 sizeOfEnc :: BitsExpr -> Int
 sizeOfEnc (ConstBitsExpr bs)     = length bs
 sizeOfEnc (EncBitsExpr n _)      = n
 sizeOfEnc (ConcatBitsExpr e1 e2) = sizeOfEnc e1 + sizeOfEnc e2
+sizeOfEnc (AndBitsExpr    e1 _)  = sizeOfEnc e1
+sizeOfEnc (OrBitsExpr     e1 _)  = sizeOfEnc e1
+sizeOfEnc (XorBitsExpr    e1 _)  = sizeOfEnc e1
 
 findVarInEnc :: String -> Int -> BitsExpr -> Maybe (Int, Int)
 findVarInEnc _   _   (ConstBitsExpr _) = Nothing
@@ -48,6 +54,9 @@ findVarInEnc var off (ConcatBitsExpr e1 e2) =
   case findVarInEnc var off e1 of
     Just res -> Just res
     Nothing  -> findVarInEnc var (off + sizeOfEnc e1) e2
+findVarInEnc _   _   (AndBitsExpr _ _) = Nothing
+findVarInEnc _   _   (OrBitsExpr  _ _) = Nothing
+findVarInEnc _   _   (XorBitsExpr _ _) = Nothing
 
 data Op
   = Add
@@ -102,7 +111,7 @@ data Proc = Proc
   , insts    :: [Inst]
   , buttons  :: [Button]
   , memorys  :: [Memory]
-  , encTypes ::[EncType]
+  , encTypes :: [EncType]
   }
   deriving Show
 

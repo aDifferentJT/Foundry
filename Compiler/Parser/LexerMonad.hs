@@ -2,6 +2,7 @@
 
 module Parser.LexerMonad
   ( AlexInput(..)
+  , ignorePendingBytes
   , alexGetByte
   , alexInputPrevChar
   , Defn(..)
@@ -22,11 +23,46 @@ module Parser.LexerMonad
   , checkMemoryDefined
   , getIdentifierDefn
   , clearLocalVars
+  , defineEncType
+  , getEncType
+  , instEncDim
   , runLexer
   ) where
 
-import Control.Arrow
-import Control.Monad.Except
+import Proc
+  ( Type
+    ( BitsT
+    , IntT
+    )
+  , EncType(EncType)
+  , BitsExpr
+    ( ConstBitsExpr
+    , EncBitsExpr
+    , ConcatBitsExpr
+    , AndBitsExpr
+    , OrBitsExpr
+    , XorBitsExpr
+    )
+  , Memory(Memory)
+  )
+import Parser.AST
+  ( RegType(RegType)
+  , InstType(InstType)
+  , ButtonType(ButtonType)
+  , UnsizedBitsExpr
+    ( UnsizedConstBitsExpr
+    , UnsizedEncBitsExpr
+    , UnsizedConcatBitsExpr
+    , UnsizedAndBitsExpr
+    , UnsizedOrBitsExpr
+    , UnsizedXorBitsExpr
+    )
+  )
+import Utils (Bit)
+
+import Control.Arrow ((***))
+import Control.Monad (when, unless)
+import Control.Monad.Except (MonadError, throwError)
 import Control.Monad.Trans.State (StateT, runStateT)
 import qualified Control.Monad.Trans.State as State
 
@@ -37,31 +73,25 @@ import qualified Data.Map.Lazy as Map
 import Data.Word (Word8)
 
 -- | Encode a Haskell String to a list of Word8 values, in UTF8 format.
-utf8Encode :: Char -> [Word8]
-utf8Encode = uncurry (:) . utf8Encode'
-
-utf8Encode' :: Char -> (Word8, [Word8])
-utf8Encode' c = case go (ord c) of
-                  (x, xs) -> (fromIntegral x, map fromIntegral xs)
- where
-  go oc
-   | oc <= 0x7f       = ( oc
-                        , [
-                        ])
-
-   | oc <= 0x7ff      = ( 0xc0 + (oc `Data.Bits.shiftR` 6)
-                        , [0x80 + oc Data.Bits..&. 0x3f
-                        ])
-
-   | oc <= 0xffff     = ( 0xe0 + (oc `Data.Bits.shiftR` 12)
-                        , [0x80 + ((oc `Data.Bits.shiftR` 6) Data.Bits..&. 0x3f)
-                        , 0x80 + oc Data.Bits..&. 0x3f
-                        ])
-   | otherwise        = ( 0xf0 + (oc `Data.Bits.shiftR` 18)
-                        , [0x80 + ((oc `Data.Bits.shiftR` 12) Data.Bits..&. 0x3f)
-                        , 0x80 + ((oc `Data.Bits.shiftR` 6) Data.Bits..&. 0x3f)
-                        , 0x80 + oc Data.Bits..&. 0x3f
-                        ])
+utf8Encode :: Char -> (Word8, [Word8])
+utf8Encode = (fromIntegral *** map fromIntegral) . go . ord
+ where go :: Int -> (Int, [Int])
+       go oc
+         | oc <= 0x7f       = (oc, [])
+         | oc <= 0x7ff      = ( 0xc0 + (oc `Data.Bits.shiftR` 6)
+                              , [0x80 + oc Data.Bits..&. 0x3f]
+                              )
+         | oc <= 0xffff     = ( 0xe0 + (oc `Data.Bits.shiftR` 12)
+                              , [0x80 + ((oc `Data.Bits.shiftR` 6) Data.Bits..&. 0x3f)
+                                , 0x80 + oc Data.Bits..&. 0x3f
+                                ]
+                              )
+         | otherwise        = ( 0xf0 + (oc `Data.Bits.shiftR` 18)
+                              , [0x80 + ((oc `Data.Bits.shiftR` 12) Data.Bits..&. 0x3f)
+                                , 0x80 + ((oc `Data.Bits.shiftR` 6) Data.Bits..&. 0x3f)
+                                , 0x80 + oc Data.Bits..&. 0x3f
+                                ]
+                              )
 
 type Byte = Word8
 
@@ -108,19 +138,20 @@ alexGetByte AlexInput{..} = case (pending, str) of
   ([]    , [] ) -> Nothing
   ([]    , c:s) ->
     let p = alexMove charPos c in
-    let (b, bs) = utf8Encode' c in
+    let (b, bs) = utf8Encode c in
     p `seq`  Just (b, AlexInput tokPos p c bs s)
 
 data Defn
-  = RegDefn
-  | InstDefn
+  = RegDefn Int
+  | InstDefn [Type]
   | ButtonDefn
-  | MemoryDefn
+  | MemoryDefn Int Int
 
 data LexerState = LexerState
   { stateInput        :: AlexInput
   , stateLocalVars    :: Set.Set String
   , stateGlobalIdents :: Map.Map String Defn
+  , stateEncTypes     :: Map.Map Type Int
   }
 
 type LexerMonad a = StateT LexerState (Either (String, Maybe AlexPosn)) a
@@ -134,52 +165,57 @@ throwLocalError n s = previousPos n >>= throwError . (s,) . Just
 throwGlobalError :: MonadError (String, Maybe AlexPosn) m => String -> m a
 throwGlobalError = throwError . (, Nothing)
 
-defineLocalVar :: String -> LexerMonad ()
+defineLocalVar :: String -> LexerMonad String
 defineLocalVar var = do
   LexerState{..} <- State.get
   when (Set.member var stateLocalVars) . throwLocalError 2 $ "Variable " ++ var ++ " redefined"
   when (Map.member var stateGlobalIdents) . throwLocalError 2 $ "Variable " ++ var ++ " has the same name as a previously defined identifier"
   State.put $ LexerState{ stateLocalVars = Set.insert var stateLocalVars, .. }
+  return var
 
-defineReg :: String -> LexerMonad ()
-defineReg var = do
+defineReg :: String -> Int -> LexerMonad RegType
+defineReg var n = do
   LexerState{..} <- State.get
   case Map.lookup var stateGlobalIdents of
-    Just RegDefn    -> throwLocalError 2 $ "Register " ++ var ++ " has the same name as a previously defined register"
-    Just InstDefn   -> throwLocalError 2 $ "Register " ++ var ++ " has the same name as a previously defined instruction"
-    Just ButtonDefn -> throwLocalError 2 $ "Register " ++ var ++ " has the same name as a previously defined button"
-    Just MemoryDefn -> throwLocalError 2 $ "Register " ++ var ++ " has the same name as a previously defined memory"
-    Nothing     -> State.put $ LexerState{ stateGlobalIdents = Map.insert var RegDefn stateGlobalIdents, .. }
+    Just (RegDefn _)      -> throwLocalError 2 $ "Register " ++ var ++ " has the same name as a previously defined register"
+    Just (InstDefn _)     -> throwLocalError 2 $ "Register " ++ var ++ " has the same name as a previously defined instruction"
+    Just  ButtonDefn      -> throwLocalError 2 $ "Register " ++ var ++ " has the same name as a previously defined button"
+    Just (MemoryDefn _ _) -> throwLocalError 2 $ "Register " ++ var ++ " has the same name as a previously defined memory"
+    Nothing     -> State.put $ LexerState{ stateGlobalIdents = Map.insert var (RegDefn n) stateGlobalIdents, .. }
+  return $ RegType var n
 
-defineInst :: String -> LexerMonad ()
-defineInst var = do
+defineInst :: String -> [Type] -> LexerMonad InstType
+defineInst var ts = do
   LexerState{..} <- State.get
   case Map.lookup var stateGlobalIdents of
-    Just RegDefn    -> throwLocalError 2 $ "Instruction " ++ var ++ " has the same name as a previously defined register"
-    Just InstDefn   -> throwLocalError 2 $ "Instruction " ++ var ++ " has the same name as a previously defined instruction"
-    Just ButtonDefn -> throwLocalError 2 $ "Instruction " ++ var ++ " has the same name as a previously defined button"
-    Just MemoryDefn -> throwLocalError 2 $ "Instruction " ++ var ++ " has the same name as a previously defined memory"
-    Nothing     -> State.put $ LexerState{ stateGlobalIdents = Map.insert var InstDefn stateGlobalIdents, .. }
+    Just (RegDefn _)      -> throwLocalError 2 $ "Instruction " ++ var ++ " has the same name as a previously defined register"
+    Just (InstDefn _)     -> throwLocalError 2 $ "Instruction " ++ var ++ " has the same name as a previously defined instruction"
+    Just  ButtonDefn      -> throwLocalError 2 $ "Instruction " ++ var ++ " has the same name as a previously defined button"
+    Just (MemoryDefn _ _) -> throwLocalError 2 $ "Instruction " ++ var ++ " has the same name as a previously defined memory"
+    Nothing     -> State.put $ LexerState{ stateGlobalIdents = Map.insert var (InstDefn ts) stateGlobalIdents, .. }
+  return $ InstType var ts
 
-defineButton :: String -> LexerMonad ()
-defineButton var = do
+defineButton :: String -> Int -> LexerMonad ButtonType
+defineButton var n = do
   LexerState{..} <- State.get
   case Map.lookup var stateGlobalIdents of
-    Just RegDefn    -> throwLocalError 2 $ "Button " ++ var ++ " has the same name as a previously defined register"
-    Just InstDefn   -> throwLocalError 2 $ "Button " ++ var ++ " has the same name as a previously defined instruction"
-    Just ButtonDefn -> throwLocalError 2 $ "Button " ++ var ++ " has the same name as a previously defined button"
-    Just MemoryDefn -> throwLocalError 2 $ "Button " ++ var ++ " has the same name as a previously defined memory"
+    Just (RegDefn _)      -> throwLocalError 2 $ "Button " ++ var ++ " has the same name as a previously defined register"
+    Just (InstDefn _)     -> throwLocalError 2 $ "Button " ++ var ++ " has the same name as a previously defined instruction"
+    Just  ButtonDefn      -> throwLocalError 2 $ "Button " ++ var ++ " has the same name as a previously defined button"
+    Just (MemoryDefn _ _) -> throwLocalError 2 $ "Button " ++ var ++ " has the same name as a previously defined memory"
     Nothing     -> State.put $ LexerState{ stateGlobalIdents = Map.insert var ButtonDefn stateGlobalIdents, .. }
+  return $ ButtonType var n
 
-defineMemory :: String -> LexerMonad ()
-defineMemory var = do
+defineMemory :: String -> Int -> Int -> LexerMonad Memory
+defineMemory var dataWidth addressWidth = do
   LexerState{..} <- State.get
   case Map.lookup var stateGlobalIdents of
-    Just RegDefn    -> throwLocalError 2 $ "Memory " ++ var ++ " has the same name as a previously defined register"
-    Just InstDefn   -> throwLocalError 2 $ "Memory " ++ var ++ " has the same name as a previously defined instruction"
-    Just ButtonDefn -> throwLocalError 2 $ "Memory " ++ var ++ " has the same name as a previously defined button"
-    Just MemoryDefn -> throwLocalError 2 $ "Memory " ++ var ++ " has the same name as a previously defined memory"
-    Nothing     -> State.put $ LexerState{ stateGlobalIdents = Map.insert var MemoryDefn stateGlobalIdents, .. }
+    Just (RegDefn _)      -> throwLocalError 2 $ "Memory " ++ var ++ " has the same name as a previously defined register"
+    Just (InstDefn _)     -> throwLocalError 2 $ "Memory " ++ var ++ " has the same name as a previously defined instruction"
+    Just  ButtonDefn      -> throwLocalError 2 $ "Memory " ++ var ++ " has the same name as a previously defined button"
+    Just (MemoryDefn _ _) -> throwLocalError 2 $ "Memory " ++ var ++ " has the same name as a previously defined memory"
+    Nothing     -> State.put $ LexerState{ stateGlobalIdents = Map.insert var (MemoryDefn dataWidth addressWidth) stateGlobalIdents, .. }
+  return $ Memory var dataWidth addressWidth
 
 isLocalVar :: String -> LexerMonad Bool
 isLocalVar var = do
@@ -192,10 +228,10 @@ checkLocalVar var = do
   if Set.member var stateLocalVars
   then return ()
   else case Map.lookup var stateGlobalIdents of
-    Just RegDefn    -> throwLocalError 1 $ var ++ " is a register, expected a local variable"
-    Just InstDefn   -> throwLocalError 1 $ var ++ " is an instruction, expected a local variable"
-    Just ButtonDefn -> throwLocalError 1 $ var ++ " is a button, expected a local variable"
-    Just MemoryDefn -> throwLocalError 1 $ var ++ " is a memory, expected a local variable"
+    Just (RegDefn _)      -> throwLocalError 1 $ var ++ " is a register, expected a local variable"
+    Just (InstDefn _)     -> throwLocalError 1 $ var ++ " is an instruction, expected a local variable"
+    Just  ButtonDefn      -> throwLocalError 1 $ var ++ " is a button, expected a local variable"
+    Just (MemoryDefn _ _) -> throwLocalError 1 $ var ++ " is a memory, expected a local variable"
     Nothing     -> throwLocalError 1 $ "Variable " ++ var ++ " not defined"
 
 checkRegDefined :: String -> LexerMonad ()
@@ -204,10 +240,10 @@ checkRegDefined var = do
   if Set.member var stateLocalVars
   then throwLocalError 1 $ var ++ " is a local variable, expected a register"
   else case Map.lookup var stateGlobalIdents of
-    Just RegDefn    -> return ()
-    Just InstDefn   -> throwLocalError 1 $ var ++ " is an instruction, expected a register"
-    Just ButtonDefn -> throwLocalError 1 $ var ++ " is a button, expected a register"
-    Just MemoryDefn -> throwLocalError 1 $ var ++ " is a memory, expected a register"
+    Just (RegDefn _)      -> return ()
+    Just (InstDefn _)     -> throwLocalError 1 $ var ++ " is an instruction, expected a register"
+    Just  ButtonDefn      -> throwLocalError 1 $ var ++ " is a button, expected a register"
+    Just (MemoryDefn _ _) -> throwLocalError 1 $ var ++ " is a memory, expected a register"
     Nothing     -> throwLocalError 1 $ "Register " ++ var ++ " not defined"
 
 checkInstDefined :: String -> LexerMonad ()
@@ -216,10 +252,10 @@ checkInstDefined var = do
   if Set.member var stateLocalVars
   then throwLocalError 1 $ var ++ " is a local variable, expected an instruction"
   else case Map.lookup var stateGlobalIdents of
-    Just RegDefn    -> throwLocalError 1 $ var ++ " is a register, expected an instruction"
-    Just InstDefn   -> return ()
-    Just ButtonDefn -> throwLocalError 1 $ var ++ " is a button, expected an instruction"
-    Just MemoryDefn -> throwLocalError 1 $ var ++ " is a memory, expected an instruction"
+    Just (RegDefn _)      -> throwLocalError 1 $ var ++ " is a register, expected an instruction"
+    Just (InstDefn _)     -> return ()
+    Just  ButtonDefn      -> throwLocalError 1 $ var ++ " is a button, expected an instruction"
+    Just (MemoryDefn _ _) -> throwLocalError 1 $ var ++ " is a memory, expected an instruction"
     Nothing     -> throwLocalError 1 $ "Instruction " ++ var ++ " not defined"
 
 checkButtonDefined :: String -> LexerMonad ()
@@ -228,10 +264,10 @@ checkButtonDefined var = do
   if Set.member var stateLocalVars
   then throwLocalError 1 $ var ++ " is a local variable, expected a button"
   else case Map.lookup var stateGlobalIdents of
-    Just RegDefn    -> throwLocalError 1 $ var ++ " is a register, expected a button"
-    Just InstDefn   -> throwLocalError 1 $ var ++ " is an instruction, expected a button"
-    Just ButtonDefn -> return ()
-    Just MemoryDefn -> throwLocalError 1 $ var ++ " is a memory, expected a button"
+    Just (RegDefn _)      -> throwLocalError 1 $ var ++ " is a register, expected a button"
+    Just (InstDefn _)     -> throwLocalError 1 $ var ++ " is an instruction, expected a button"
+    Just  ButtonDefn      -> return ()
+    Just (MemoryDefn _ _) -> throwLocalError 1 $ var ++ " is a memory, expected a button"
     Nothing     -> throwLocalError 1 $ "Button " ++ var ++ " not defined"
 
 checkMemoryDefined :: String -> LexerMonad ()
@@ -240,10 +276,10 @@ checkMemoryDefined var = do
   if Set.member var stateLocalVars
   then throwLocalError 1 $ var ++ " is a local variable, expected a memory"
   else case Map.lookup var stateGlobalIdents of
-    Just RegDefn    -> throwLocalError 1 $ var ++ " is a register, expected a memory"
-    Just InstDefn   -> throwLocalError 1 $ var ++ " is an instruction, expected a memory"
-    Just ButtonDefn -> throwLocalError 1 $ var ++ " is a button, expected a memory"
-    Just MemoryDefn -> return ()
+    Just (RegDefn _)      -> throwLocalError 1 $ var ++ " is a register, expected a memory"
+    Just (InstDefn _)     -> throwLocalError 1 $ var ++ " is an instruction, expected a memory"
+    Just  ButtonDefn      -> throwLocalError 1 $ var ++ " is a button, expected a memory"
+    Just (MemoryDefn _ _) -> return ()
     Nothing     -> throwLocalError 1 $ "Memory " ++ var ++ " not defined"
 
 getIdentifierDefn :: String -> LexerMonad Defn
@@ -258,8 +294,59 @@ clearLocalVars = do
   LexerState{..} <- State.get
   State.put $ LexerState{ stateLocalVars = Set.empty, .. }
 
+defineEncType :: Type -> Int -> LexerMonad EncType
+defineEncType t n = do
+  LexerState{..} <- State.get
+  when (Map.member t stateEncTypes) . throwLocalError 6 $ "Encoding of type " ++ show t ++ " redefined"
+  State.put $ LexerState{ stateEncTypes = Map.insert t n stateEncTypes, .. }
+  return $ EncType t n
+
+getEncType :: Type -> LexerMonad Int
+getEncType (BitsT n) = return n
+getEncType (IntT n)  = return n
+getEncType  t        = do
+  LexerState{..} <- State.get
+  case Map.lookup t stateEncTypes of
+    Just n  -> return n
+    Nothing -> throwLocalError 1 $ "Encoding of type " ++ show t ++ " not defined"
+
+instEncDim' :: [Type] -> [String] -> UnsizedBitsExpr -> LexerMonad (Int, [Bit], BitsExpr)
+instEncDim' _  _  (UnsizedConstBitsExpr bs)     = return (length bs, bs, ConstBitsExpr [])
+instEncDim' ts vs (UnsizedEncBitsExpr v)        = do
+  case filter ((== v) . fst) $ zip vs ts of
+    []       -> throwLocalError 1 $ "No such variable " ++ v
+    [(_, t)] -> (\n -> (n, [], EncBitsExpr n v)) <$> getEncType t
+    _        -> throwLocalError 1 $ "Two variables with the same name " ++ v
+instEncDim' ts vs (UnsizedConcatBitsExpr e1 e2) = do
+  (n1, bs1, e1') <- instEncDim' ts vs e1
+  (n2, bs2, e2') <- instEncDim' ts vs e2
+  case e1' of
+    ConstBitsExpr [] -> return (n1 + n2, bs1 ++ bs2, e2')
+    _                -> return (n1 + n2, bs1, ConcatBitsExpr e1' (ConcatBitsExpr (ConstBitsExpr bs2) e2'))
+instEncDim' ts vs (UnsizedAndBitsExpr e1 e2)    = do
+  (n1, bs1, e1') <- instEncDim' ts vs e1
+  (n2, bs2, e2') <- instEncDim' ts vs e2
+  unless (n1 == n2) . throwLocalError 1 $ "Mismatched dimensions of bitwise and: Bits " ++ show n1 ++ " and Bits " ++ show n2
+  return (n1, [], AndBitsExpr (ConcatBitsExpr (ConstBitsExpr bs1) e1') (ConcatBitsExpr (ConstBitsExpr bs2) e2'))
+instEncDim' ts vs (UnsizedOrBitsExpr e1 e2)     = do
+  (n1, bs1, e1') <- instEncDim' ts vs e1
+  (n2, bs2, e2') <- instEncDim' ts vs e2
+  unless (n1 == n2) . throwLocalError 1 $ "Mismatched dimensions of bitwise or: Bits " ++ show n1 ++ " and Bits " ++ show n2
+  return (n1, [], OrBitsExpr (ConcatBitsExpr (ConstBitsExpr bs1) e1') (ConcatBitsExpr (ConstBitsExpr bs2) e2'))
+instEncDim' ts vs (UnsizedXorBitsExpr e1 e2)    = do
+  (n1, bs1, e1') <- instEncDim' ts vs e1
+  (n2, bs2, e2') <- instEncDim' ts vs e2
+  unless (n1 == n2) . throwLocalError 1 $ "Mismatched dimensions of bitwise exclusive or: Bits " ++ show n1 ++ " and Bits " ++ show n2
+  return (n1, [], XorBitsExpr (ConcatBitsExpr (ConstBitsExpr bs1) e1') (ConcatBitsExpr (ConstBitsExpr bs2) e2'))
+
+instEncDim :: [Type] -> [String] -> UnsizedBitsExpr -> LexerMonad (Int, [Bit], BitsExpr)
+instEncDim ts vs e = do
+  (n, bs, e') <- instEncDim' ts vs e
+  when (null bs) $ throwLocalError 1 "Instruction encodings must have a constant prefix"
+  return (n, bs, e')
+
 runLexer' :: LexerMonad a -> String -> Either (String, Maybe AlexPosn) a
-runLexer' m s = fst <$> runStateT m (LexerState (AlexInput [alexStartPos] alexStartPos '\n' [] s) Set.empty Map.empty)
+runLexer' m s = fst <$> runStateT m (LexerState (AlexInput [alexStartPos] alexStartPos '\n' [] s) Set.empty Map.empty Map.empty)
 
 printErrors :: String -> Either (String, Maybe AlexPosn) a -> Either String a
 printErrors _ (Right a)                          = Right a

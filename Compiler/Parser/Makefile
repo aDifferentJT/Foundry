@@ -1,8 +1,8 @@
-GHC_FLAGS=-fwarn-incomplete-patterns -fwarn-incomplete-uni-patterns
+GHC_FLAGS=-Weverything -Wno-unsafe -Wno-safe -Wno-implicit-prelude
 
 all: Test
 
-Test: Lexer.hs Parser.hs ../*.hs
+Test: Lexer.hs Parser.hs ../*.hs *.hs
 	ghc ${GHC_FLAGS} -i.. Test
 
 Lexer.hs: Lexer.x

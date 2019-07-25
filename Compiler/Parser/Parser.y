@@ -3,6 +3,7 @@
 
 module Parser.Parser (parse) where
 
+import Proc
 import Parser.AST
 import Parser.Lexer
 import Parser.LexerMonad
@@ -68,7 +69,7 @@ import Data.List(intercalate)
 %left '&&' '||'
 %%
 
-Proc              :: { UnsizedProc }
+Proc              :: { Proc }
 Proc              : RawProc                                      {%
   case $1 of
     RawProc{..} -> do
@@ -95,7 +96,7 @@ Proc              : RawProc                                      {%
         (_, _, _, _, (InstType n _):_, _, _)       -> throwGlobalError $ "Instruction " ++ n ++ " has no encoding or implementation"
         (_, _, _, _, _, (InstImpl n vs _):_, _)    -> throwGlobalError $ "Implementation given for unknown instruction " ++ instName n vs
         (_, _, _, _, _, _, (InstEnc n vs _):_)     -> throwGlobalError $ "Encoding given for unknown instruction " ++ instName n vs
-        (xs, [], [], [], [], [], [])               -> return $ [UnsizedInst n ts (vs1, rs) (vs2, e) | (InstType n ts, InstImpl _ vs1 rs, InstEnc _ vs2 e) <- xs]
+        (xs, [], [], [], [], [], [])               -> return $ [Inst n ts (vs1, rs) (vs2, e) | (InstType n ts, InstImpl _ vs1 rs, InstEnc _ vs2 e) <- xs]
       buttons' <- case rawButtons of
         []  -> throwGlobalError "No register block"
         [x] -> return x
@@ -109,7 +110,7 @@ Proc              : RawProc                                      {%
         []  -> throwGlobalError "No register block"
         [x] -> return x
         _   -> throwGlobalError "More than one register block"
-      return $ UnsizedProc regs'' insts'' buttons'' memory' rawEncTypes
+      return $ Proc regs'' insts'' buttons'' memory' rawEncTypes
 }
 
 RawProc           :: { RawProc }
@@ -145,16 +146,16 @@ ArgTypeList       : {- empty -}                                  { [] }
                   | ArgTypeList '<' Type '>'                     { $3 : $1 }
 
 RegType           :: { RegType }
-RegType           : '-' Var ':' regT int                         {% defineReg $2 >> return (RegType $2 $5) }
+RegType           : '-' Var ':' regT int                         {% defineReg $2 $5 }
 
 InstType          :: { InstType }
-InstType          : '-' Var ArgTypeList                          {% defineInst $2 >> return (InstType $2 (reverse $3)) }
+InstType          : '-' Var ArgTypeList                          {% defineInst $2 (reverse $3) }
 
 ButtonType        :: { ButtonType }
-ButtonType        : '-' Var ':' buttonT int                      {% defineButton $2 >> return (ButtonType $2 $5) }
+ButtonType        : '-' Var ':' buttonT int                      {% defineButton $2 $5 }
 
 MemoryType        :: { Memory }
-MemoryType        : '-' Var ':' ramT int int                     {% defineMemory $2 >> return (Memory $2 $5 $6) }
+MemoryType        : '-' Var ':' ramT int int                     {% defineMemory $2 $5 $6 }
 
 List(p)           : {- empty -}                                  { [] }
                   | List(p) p                                    { $2 : $1 }
@@ -172,10 +173,10 @@ MemoryTypes       :: { [Memory] }
 MemoryTypes       : memory '{' List(MemoryType) '}'              { $3 }
 
 EncType           :: { EncType }
-EncType           : '<' Type '>' ':' bitsT int                   { EncType $2 $6 }
+EncType           : '<' Type '>' ':' bitsT int                   {% defineEncType $2 $6 }
 
 Arg               :: { String }
-Arg               : '<' Var '>'                                  {% defineLocalVar $2 >> return $2 }
+Arg               : '<' Var '>'                                  {% defineLocalVar $2 }
 
 Enc               :: { Enc }
 Enc               : '<' Var List(Arg) '>' '=' BitsExpr           {%
@@ -183,14 +184,24 @@ Enc               : '<' Var List(Arg) '>' '=' BitsExpr           {%
     clearLocalVars
     defn <- getIdentifierDefn $2
     case defn of
-      RegDefn    -> do
+      (RegDefn n)      -> do
         unless (null $3) . throwLocalError 4 $ "Encoding for register " ++ $2 ++ " has arguments"
         case $6 of
-          UnsizedConstBitsExpr bs -> return $ RegEnc $2 bs
+          UnsizedConstBitsExpr bs -> do
+            d1 <- getEncType $ RegT n
+            let d2 = length bs
+            unless (d1 == d2) . throwLocalError 1 $ "<" ++ $2 ++ "> is of type Bits " ++ show d2 ++ " but I expected Bits " ++ show d1
+            return $ RegEnc $2 bs
           _                       -> throwLocalError 1 $ "Encoding for register " ++ $2 ++ " is not constant"
-      InstDefn   -> fmap (InstEnc $2 $3) (splitBitsExpr $6)
-      ButtonDefn -> throwLocalError 1 $ "Encoding given for button " ++ $2
-      MemoryDefn -> throwLocalError 1 $ "Encoding given for memory " ++ $2
+      (InstDefn ts)    -> do
+        let vs = reverse $3
+        unless (length ts == length vs) . throwLocalError 1 $ "Instruction " ++ $2 ++ " has " ++ show (length vs) ++ " arguments, expected " ++ show (length ts) 
+        d1 <- getEncType InstT
+        (d2, bs, e) <- instEncDim ts vs $6
+        unless (d1 == d2) . throwLocalError 1 $ "<" ++ intercalate " " ($2 : ["<" ++ v ++ ">" | v <- vs]) ++ "> is of type Bits " ++ show d2 ++ " but I expected Bits " ++ show d1
+        return $ InstEnc $2 vs (bs, e)
+      ButtonDefn       -> throwLocalError 1 $ "Encoding given for button " ++ $2
+      (MemoryDefn _ _) -> throwLocalError 1 $ "Encoding given for memory " ++ $2
 }
 
 BoolExpr          :: { BoolExpr }
@@ -208,10 +219,10 @@ Expr              : '(' Expr ')'                                 { $2 }
     else do
       defn <- getIdentifierDefn $1
       case defn of
-        RegDefn    -> return $ RegExpr $1
-        InstDefn   -> throwLocalError 1 $ $1 ++ " is an instruction, expected a register or a local variable"
-        ButtonDefn -> throwLocalError 1 $ $1 ++ " is a button, expected a register or a local variable"
-        MemoryDefn -> throwLocalError 1 $ $1 ++ " is a memory, expected a register or a local variable"
+        (RegDefn n)      -> return $ RegExpr $1
+        (InstDefn ts)    -> throwLocalError 1 $ $1 ++ " is an instruction, expected a register or a local variable"
+        ButtonDefn       -> throwLocalError 1 $ $1 ++ " is a button, expected a register or a local variable"
+        (MemoryDefn _ _) -> throwLocalError 1 $ $1 ++ " is a memory, expected a register or a local variable"
 }
                   | Var '[' Expr ']'                             {% checkMemoryDefined $1 >> return (MemAccessExpr $1 $3) }
                   | int                                          { ConstExpr $1 }
@@ -235,10 +246,10 @@ ImplRule          : Var '<-' Expr                                {%
     else do
       defn <- getIdentifierDefn $1
       case defn of
-        RegDefn    -> return $ ImplRule (RegLValue $1) $3
-        InstDefn   -> throwLocalError 1 $ $1 ++ " is an instruction, expected a register or a local variable"
-        ButtonDefn -> throwLocalError 1 $ $1 ++ " is a button, expected a register or a local variable"
-        MemoryDefn -> throwLocalError 1 $ $1 ++ " is a memory, expected a register or a local variable"
+        (RegDefn n)      -> return $ ImplRule (RegLValue $1) $3
+        (InstDefn ts)    -> throwLocalError 1 $ $1 ++ " is an instruction, expected a register or a local variable"
+        ButtonDefn       -> throwLocalError 1 $ $1 ++ " is a button, expected a register or a local variable"
+        (MemoryDefn _ _) -> throwLocalError 1 $ $1 ++ " is a memory, expected a register or a local variable"
 }
                   | Var '[' Expr ']' '<-' Expr                   {% checkMemoryDefined $1 >> return (ImplRule (MemAccessLValue $1 $3) $6) }
 
@@ -248,31 +259,17 @@ Impl              : Var List(Arg) '{' List(ImplRule) '}'         {%
     clearLocalVars
     defn <- getIdentifierDefn $1
     case defn of
-      RegDefn    -> throwLocalError 1 $ "Implementation given for register " ++ $1
-      InstDefn   -> return (InstImpl $1 (reverse $2) $4)
-      ButtonDefn -> do
-        unless (null $2) . throwLocalError 4 $ "Encoding for button " ++ $1 ++ " has arguments"
+      (RegDefn n)      -> throwLocalError 1 $ "Implementation given for register " ++ $1
+      (InstDefn ts)    -> do
+        unless (length ts == length $2) . throwLocalError 1 $ "Instruction " ++ $1 ++ " has " ++ show (length $2) ++ " arguments, expected " ++ show (length ts) 
+        return (InstImpl $1 (reverse $2) $4)
+      ButtonDefn       -> do
+        unless (null $2) . throwLocalError 1 $ "Encoding for button " ++ $1 ++ " has arguments"
         return (ButtonImpl $1 $4)
-      MemoryDefn -> throwLocalError 1 $ "Implementation given for memory " ++ $1
+      (MemoryDefn _ _) -> throwLocalError 1 $ "Implementation given for memory " ++ $1
 }
 
 {
-splitBitsExpr' :: UnsizedBitsExpr -> ([Bit], UnsizedBitsExpr)
-splitBitsExpr' (UnsizedConstBitsExpr bs)     = (bs, UnsizedConstBitsExpr [])
-splitBitsExpr' (UnsizedEncBitsExpr v)        = ([], UnsizedEncBitsExpr v)
-splitBitsExpr' (UnsizedConcatBitsExpr e1 e2) = case splitBitsExpr' e1 of
-  (bs1, UnsizedConstBitsExpr []) -> let (bs2, e2') = splitBitsExpr' e2 in (bs1 ++ bs2, e2')
-  (bs1, e1')                     -> (bs1, UnsizedConcatBitsExpr e1' e2)
-splitBitsExpr' (UnsizedAndBitsExpr e1 e2)    = ([], UnsizedAndBitsExpr e1 e2)
-splitBitsExpr' (UnsizedOrBitsExpr e1 e2)     = ([], UnsizedOrBitsExpr e1 e2)
-splitBitsExpr' (UnsizedXorBitsExpr e1 e2)    = ([], UnsizedXorBitsExpr e1 e2)
-
-splitBitsExpr :: UnsizedBitsExpr -> LexerMonad ([Bit], UnsizedBitsExpr)
-splitBitsExpr e = do
-  let e' = splitBitsExpr' $ e
-  when (null . fst $ e') $ throwLocalError 0 "Instruction encodings must have a constant prefix"
-  return e'
-
 parseError :: Token -> LexerMonad a
 parseError _ = throwLocalError 0 "Parse Error"
 }

@@ -4,14 +4,12 @@ module Utils
   ( Bit(..)
   , zipBy
   , zip3By
-  , (****)
   ) where
 
-import Control.Arrow
 import Data.List (sortBy)
 
 import qualified Text.ParserCombinators.ReadPrec as ReadPrec
-import Text.Read
+import Text.Read (readPrec)
 
 data Bit = Zero | One
   deriving Eq
@@ -74,6 +72,7 @@ compare3 x y z
   | x == z && z <  y = EQB
   | x == y && y <  z = EQC
   | x == y && y == z = EQ3
+  | otherwise        = error "Non-transitive Ord instance"
 
 zip3By' :: Ord d => (a -> d) -> (b -> d) -> (c -> d) -> [a] -> [b] -> [c] -> ([(a, b, c)], [(a, b)], [(a, c)], [(b, c)], [a], [b], [c])
 zip3By' _ g h  []     ys     zs    = let (yzs, ys', zs') = zipBy' g h ys zs in ([], [], [], yzs, [], ys', zs')
@@ -93,7 +92,4 @@ zip3By' f g h (x:xs) (y:ys) (z:zs) = case (compare3 (f x) (g y) (h z)) of
   EQB -> let (xyzs, xys, xzs, yzs, xs', ys', zs') = zip3By' f g h xs (y:ys) zs in (xyzs, xys, (x,z):xzs, yzs, xs', ys', zs')
   EQC -> let (xyzs, xys, xzs, yzs, xs', ys', zs') = zip3By' f g h (x:xs) ys zs in (xyzs, xys, xzs, (y,z):yzs, xs', ys', zs')
   EQ3 -> let (xyzs, xys, xzs, yzs, xs', ys', zs') = zip3By' f g h xs ys zs in ((x,y,z):xyzs, xys, xzs, yzs, xs', ys', zs')
-
-(****) :: (a -> b -> c) -> (a' -> b' -> c') -> (a, a') -> (b, b') -> (c, c')
-f **** g = uncurry (***) . (f *** g)
 
