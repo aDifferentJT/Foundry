@@ -125,6 +125,7 @@ genReg insts buttons (Reg name size enc) = intercalate "\n" $
   ] ++
   mapMaybe (genInstRule name) insts ++
   mapMaybe (genButtonRule name) buttons ++
+  (if name == "pc" then ["  execute & pc + 1;"] else []) ++
   [ "  " ++ name ++ ";"
   ]
 
