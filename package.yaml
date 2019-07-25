@@ -1,0 +1,62 @@
+name:                Foundry
+version:             0.1.0.0
+github:              "nixCodeX/Foundry"
+license:             None
+author:              "Jonathan Tanner"
+maintainer:          "jonathan.tanner@sjc.ox.ac.uk"
+copyright:           "2019 Jonathan Tanner"
+
+extra-source-files:
+  - README.md
+
+# Metadata used when publishing your package
+# synopsis:            Easy to use toolchain for building simple processors
+# category:            Hardware, Compiler
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on GitHub at <https://github.com/nixCodeX/Foundry#readme>
+
+dependencies:
+  - base >= 4.7 && < 5
+
+library:
+  source-dirs: src
+  build-tools:
+    - alex
+    - happy
+  dependencies:
+    - array
+    - containers
+    - mtl
+    - transformers
+
+executables:
+  Foundry-exe:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    dependencies:
+      - Foundry
+
+tests:
+  Parser-test:
+    main:                test/Parser.hs
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    dependencies:
+      - Foundry
+  CodeGen-test:
+    main:                test/CodeGen.hs
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    dependencies:
+      - Foundry
