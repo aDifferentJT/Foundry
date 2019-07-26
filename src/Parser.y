@@ -1,7 +1,7 @@
 {
 {-# LANGUAGE RecordWildCards, LambdaCase #-}
 
-module Parser (parse) where
+module Parser (parse, parseFile) where
 
 import Proc
 import Parser.AST
@@ -10,7 +10,9 @@ import Parser.Monad
 
 import Utils (Bit(..), zipBy, zip3By)
 
-import Control.Monad.Except
+import Control.Monad.Trans (lift)
+import Control.Monad (unless)
+import Control.Monad.Except (ExceptT(ExceptT))
 import qualified Control.Monad.Trans.State as State
 import Data.List(intercalate)
 }
@@ -275,4 +277,7 @@ parseError _ = throwLocalError 0 "Parse Error"
 
 parse :: String -> Either String Proc
 parse = runParser parseM
+
+parseFile :: FilePath -> ExceptT String IO Proc
+parseFile = ExceptT . (parse <$>) . readFile
 }

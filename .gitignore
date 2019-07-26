@@ -25,6 +25,8 @@ cabal.project.local~
 *.lock
 Foundry.cabal
 
+examples/*.v
+
 FPGA_examples
 FPGA.pdf
 

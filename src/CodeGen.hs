@@ -1,6 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 
-module CodeGen.CodeGen
+module CodeGen
   ( genCode
   ) where
 

@@ -1,7 +1,7 @@
 module Main(main) where
 
 import Parser (parse)
-import CodeGen.CodeGen (genCode)
+import CodeGen (genCode)
 
 import Data.Maybe (fromMaybe, listToMaybe)
 import System.Environment (getArgs)

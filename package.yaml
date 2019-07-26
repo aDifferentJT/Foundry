@@ -42,6 +42,8 @@ executables:
       - -with-rtsopts=-N
     dependencies:
       - Foundry
+      - filepath
+      - mtl
 
 tests:
   HLint-test:
