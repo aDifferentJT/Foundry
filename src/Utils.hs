@@ -78,7 +78,7 @@ zip3By' :: Ord d => (a -> d) -> (b -> d) -> (c -> d) -> [a] -> [b] -> [c] -> ([(
 zip3By' _ g h  []     ys     zs    = let (yzs, ys', zs') = zipBy' g h ys zs in ([], [], [], yzs, [], ys', zs')
 zip3By' f _ h  xs     []     zs    = let (xzs, xs', zs') = zipBy' f h xs zs in ([], [], xzs, [], xs', [], zs')
 zip3By' f g _  xs     ys     []    = let (xys, xs', ys') = zipBy' f g xs ys in ([], xys, [], [], xs', ys', [])
-zip3By' f g h (x:xs) (y:ys) (z:zs) = case (compare3 (f x) (g y) (h z)) of
+zip3By' f g h (x:xs) (y:ys) (z:zs) = case compare3 (f x) (g y) (h z) of
   ABC -> let (xyzs, xys, xzs, yzs, xs', ys', zs') = zip3By' f g h xs (y:ys) (z:zs) in (xyzs, xys, xzs, yzs, x:xs', ys', zs')
   ACB -> let (xyzs, xys, xzs, yzs, xs', ys', zs') = zip3By' f g h xs (y:ys) (z:zs) in (xyzs, xys, xzs, yzs, x:xs', ys', zs')
   AEQ -> let (xyzs, xys, xzs, yzs, xs', ys', zs') = zip3By' f g h xs (y:ys) (z:zs) in (xyzs, xys, xzs, yzs, x:xs', ys', zs')

@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards, LambdaCase #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module CodeGen.CodeGen
   ( genCode
@@ -45,7 +45,7 @@ combineLines' :: a -> [a] -> [a] -> [[[a]]] -> [a]
 combineLines' p colSep lineSep = intercalate lineSep . alignLines' p colSep
 
 genBits :: [Bit] -> String
-genBits bs = (show . length $ bs) ++ "'b" ++ (concat . map show $ bs)
+genBits bs = (show . length $ bs) ++ "'b" ++ concatMap show bs
 
 genInstDef :: Inst -> [String]
 genInstDef (Inst n _ _ (_, (bs, e))) = 
@@ -142,17 +142,17 @@ genOp BitwiseOr  = "|"
 genOp BitwiseXor = "^"
 
 genBoolExpr :: ([String], [ImplRule]) -> ([String], ([Bit], BitsExpr)) -> BoolExpr -> String
-genBoolExpr (ruleArgs, rules) (encArgs, (bits, enc)) (EqualityExpr e1 e2)   = intercalate " " $
+genBoolExpr (ruleArgs, rules) (encArgs, (bits, enc)) (EqualityExpr e1 e2)   = unwords
   [ genExpr (ruleArgs, rules) (encArgs, (bits, enc)) e1
   , " == "
   , genExpr (ruleArgs, rules) (encArgs, (bits, enc)) e2
   ]
-genBoolExpr (ruleArgs, rules) (encArgs, (bits, enc)) (LogicalAndExpr b1 b2) = intercalate " " $
+genBoolExpr (ruleArgs, rules) (encArgs, (bits, enc)) (LogicalAndExpr b1 b2) = unwords
   [ genBoolExpr (ruleArgs, rules) (encArgs, (bits, enc)) b1
   , " && "
   , genBoolExpr (ruleArgs, rules) (encArgs, (bits, enc)) b2
   ]
-genBoolExpr (ruleArgs, rules) (encArgs, (bits, enc)) (LogicalOrExpr b1 b2) = intercalate " " $
+genBoolExpr (ruleArgs, rules) (encArgs, (bits, enc)) (LogicalOrExpr b1 b2)  = unwords
   [ genBoolExpr (ruleArgs, rules) (encArgs, (bits, enc)) b1
   , " || "
   , genBoolExpr (ruleArgs, rules) (encArgs, (bits, enc)) b2
@@ -170,12 +170,12 @@ genExpr (ruleArgs, rules) (encArgs, (bits, enc)) (RegExpr reg)         = reg
 genExpr (ruleArgs, rules) (encArgs, (bits, enc)) (MemAccessExpr mem _) = mem ++ "_out"
 genExpr (ruleArgs, rules) (encArgs, (bits, enc)) (ConstExpr n)         = show n
 genExpr (ruleArgs, rules) (encArgs, (bits, enc)) (BinaryConstExpr bs)  = genBits bs
-genExpr (ruleArgs, rules) (encArgs, (bits, enc)) (OpExpr o e1 e2)      = intercalate " " $ 
+genExpr (ruleArgs, rules) (encArgs, (bits, enc)) (OpExpr o e1 e2)      = unwords
   [ genExpr (ruleArgs, rules) (encArgs, (bits, enc)) e1
   , genOp o
   , genExpr (ruleArgs, rules) (encArgs, (bits, enc)) e2
   ]
-genExpr (ruleArgs, rules) (encArgs, (bits, enc)) (TernaryExpr b e1 e2) = intercalate " " $
+genExpr (ruleArgs, rules) (encArgs, (bits, enc)) (TernaryExpr b e1 e2) = unwords
   [ genBoolExpr (ruleArgs, rules) (encArgs, (bits, enc)) b
   , "?"
   , genExpr (ruleArgs, rules) (encArgs, (bits, enc)) e1
@@ -239,7 +239,7 @@ genReg insts buttons (Reg name size enc) = combineLines ' ' " // " "\n" $
   ] ++
   (uncurry zip . first (alignLines' ' ' " ") . unzip . mapMaybe (genInstRule regPred) $ insts) ++
   (uncurry zip . first (alignLines' ' ' " ") . unzip . mapMaybe (genButtonRule regPred) $ buttons) ++
-  (if name == "pc" then [("    execute & pc + 1;", "Increment PC")] else []) ++
+  [("    execute & pc + 1;", "Increment PC") | name == "pc"] ++
   [ ("    " ++ name ++ ";", "Fallthrough to keep it the same")
   ]
   where regPred :: ImplRule -> Maybe Expr
@@ -315,8 +315,8 @@ genMemoryWrite insts buttons (Memory name dataWidth addressWidth) = combineLines
   [ ("  // Memory: " ++ name, "")
   , ("  wire [" ++ show (addressWidth - 1) ++ ":0] " ++ name ++ "_write =", "")
   ] ++
-  (mapMaybe (genIsInstRule memoryPred) insts) ++
-  (mapMaybe (genIsButtonRule memoryPred) buttons) ++
+  mapMaybe (genIsInstRule memoryPred) insts ++
+  mapMaybe (genIsButtonRule memoryPred) buttons ++
   [ ("    0;", "Fallthrough, default to not writing")
   ]
   where memoryPred :: ImplRule -> Maybe Expr

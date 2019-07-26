@@ -1,15 +1,14 @@
 module Main(main) where
 
-import Parser.Parser (parse)
-import Parser.LexerMonad (runLexer)
+import Parser (parse)
 
+import Data.Maybe (fromMaybe, listToMaybe)
 import System.Environment (getArgs)
 
 main :: IO ()
 main = do
-  --fn <- head <$> getArgs
-  let fn = "examples/processor_4.fdry"
-  ast <- runLexer parse <$> readFile fn
+  fn <- fromMaybe "examples/processor_4.fdry" . listToMaybe <$> getArgs
+  ast <- parse <$> readFile fn
   case ast of
     Left e     -> putStr e
     Right ast' -> print ast'

@@ -1,12 +1,12 @@
 {
 {-# LANGUAGE RecordWildCards, LambdaCase #-}
 
-module Parser.Parser (parse) where
+module Parser (parse) where
 
 import Proc
 import Parser.AST
 import Parser.Lexer
-import Parser.LexerMonad
+import Parser.Monad
 
 import Utils (Bit(..), zipBy, zip3By)
 
@@ -15,9 +15,9 @@ import qualified Control.Monad.Trans.State as State
 import Data.List(intercalate)
 }
 
-%name parse
+%name parseM
 %tokentype { Token }
-%monad { LexerMonad }
+%monad { ParserMonad }
 %lexer { readToken >>= } { EOF }
 %error { parseError }
 
@@ -270,6 +270,9 @@ Impl              : Var List(Arg) '{' List(ImplRule) '}'         {%
 }
 
 {
-parseError :: Token -> LexerMonad a
+parseError :: Token -> ParserMonad a
 parseError _ = throwLocalError 0 "Parse Error"
+
+parse :: String -> Either String Proc
+parse = runParser parseM
 }

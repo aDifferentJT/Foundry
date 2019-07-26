@@ -7,7 +7,7 @@ module Parser.Lexer
   , readToken
   ) where
 
-import Parser.LexerMonad
+import Parser.Monad
 
 import Utils (Bit(..))
 
@@ -102,13 +102,13 @@ data Token
   | EOF
   deriving (Eq,Show)
 
-readToken :: LexerMonad Token
+readToken :: ParserMonad Token
 readToken = do
-  LexerState{..} <- State.get
+  ParserState{..} <- State.get
   case alexScan stateInput 0 of
     AlexEOF                -> return EOF
-    AlexError input'       -> State.put LexerState{ stateInput = input', .. } >> throwLocalError 0 "Could not lex token"
-    AlexSkip input' _      -> State.put LexerState{ stateInput = input', .. } >> readToken
-    AlexToken input' len t -> State.put LexerState{ stateInput = input' { tokPos = take 10 $ charPos stateInput : tokPos input' }, .. } >> (t . take len . str $ stateInput)
+    AlexError input'       -> State.put ParserState{ stateInput = input', .. } >> throwLocalError 0 "Could not lex token"
+    AlexSkip input' _      -> State.put ParserState{ stateInput = input', .. } >> readToken
+    AlexToken input' len t -> State.put ParserState{ stateInput = input' { tokPos = take 10 $ charPos stateInput : tokPos input' }, .. } >> (t . take len . str $ stateInput)
 }
 
