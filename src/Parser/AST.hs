@@ -13,6 +13,7 @@ import Proc
   , EncType
   , BitsExpr
   , ImplRule
+  , InstRule
   , Memory
   )
 
@@ -50,7 +51,8 @@ data RawProc = RawProc
   { rawRegs     :: [[RegType]]
   , rawInsts    :: [[InstType]]
   , rawButtons  :: [[ButtonType]]
-  , rawMemory   :: [[Memory]]
+  , rawMemorys  :: [[Memory]]
+  , rawInstRule :: [InstRule]
   , rawEncTypes :: [EncType]
   , rawEncs     :: [Enc]
   , rawImpls    :: [Impl]

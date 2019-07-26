@@ -52,6 +52,7 @@ tokens :-
   \]                          { const . return $ CloseSquare }
   0b[01]+                     { return . Bits . map (read . (:[])) . drop 2 }
   $digit+                     { return . Int . read }
+  inst                        { const . return $ InstRegTok }
   $lower [$alpha $digit \_]*  { return . VarTok }
   Reg                         { const . return $ RegTok }
   Bits                        { const . return $ BitsTok }
@@ -92,6 +93,7 @@ data Token
   | CloseSquare
   | Bits [Bit]
   | Int Int
+  | InstRegTok
   | VarTok String
   | RegTok
   | BitsTok

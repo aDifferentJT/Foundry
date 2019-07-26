@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE LambdaCase, RecordWildCards #-}
 
 module CodeGen
   ( genCode
@@ -7,9 +7,9 @@ module CodeGen
 import Proc
 import Utils (Bit(..))
 
-import Control.Arrow
-import Data.List
-import Data.Maybe
+import Control.Arrow (first)
+import Data.List (intercalate, transpose)
+import Data.Maybe (mapMaybe)
 
 padRightTo :: Int -> a -> [a] -> [a]
 padRightTo n x  []    = replicate n x
@@ -90,7 +90,7 @@ boilerplateRegs :: Proc -> String
 boilerplateRegs = combineBlocks . map (const . intercalate "\n") $
   [ [ "  // Handle running"
     , "  reg running = 0;"
-    , "  always @ (posedge `RUN_BUTTON) begin"
+    , "  always @ (posedge `BUTTON_run) begin"
     , "    running <= !running;"
     , "  end"
     ]
@@ -107,7 +107,7 @@ boilerplateRegs = combineBlocks . map (const . intercalate "\n") $
   , [ "  // Handle halt"
     , "  reg halt = 0;"
     , "  always @ (posedge clk) begin"
-    , "    if (execute & `is_inst_halt)"
+    , "    if (execute & `is_inst_halt(inst))"
     , "      halt <= 1;"
     , "    if (!running)"
     , "      halt <= 0;"
@@ -231,15 +231,24 @@ genIsButtonRule pred (Button name _ rules) =
       )
     (_:_:_) -> error "More than one rule"
 
-genReg :: [Inst] -> [Button] -> Reg -> String
-genReg insts buttons (Reg name size enc) = combineLines ' ' " // " "\n" $
+genRegDecl :: Reg -> [String]
+genRegDecl (Reg name size _) =
+  [ "  reg [" ++ show (size - 1) ++ ":0] "
+  , name
+  , "= 0;"
+  ]
+
+genRegDecls :: Proc -> String
+genRegDecls = combineLines' ' ' " " "\n" . map genRegDecl . regs
+
+genRegImpl :: [Inst] -> [Button] -> Reg -> String
+genRegImpl insts buttons (Reg name size enc) = combineLines ' ' " // " "\n" $
   [ ("  // Register: " ++ name, "")
-  , ("  reg [" ++ show (size - 1) ++ ":0] " ++ name ++ " = 0;", "")
   , ("  wire [" ++ show (size - 1) ++ ":0] new_" ++ name ++ " =", "")
   ] ++
   (uncurry zip . first (alignLines' ' ' " ") . unzip . mapMaybe (genInstRule regPred) $ insts) ++
   (uncurry zip . first (alignLines' ' ' " ") . unzip . mapMaybe (genButtonRule regPred) $ buttons) ++
-  [("    execute & pc + 1;", "Increment PC") | name == "pc"] ++
+  [("    execute ? pc + 1 :", "Increment PC") | name == "pc"] ++
   [ ("    " ++ name ++ ";", "Fallthrough to keep it the same")
   ]
   where regPred :: ImplRule -> Maybe Expr
@@ -248,8 +257,8 @@ genReg insts buttons (Reg name size enc) = combineLines ' ' " // " "\n" $
           | otherwise   = Nothing
         regPred  _      = Nothing
 
-genRegs :: Proc -> String
-genRegs Proc{..} = intercalate "\n\n" . map (genReg insts buttons) $ regs
+genRegImpls :: Proc -> String
+genRegImpls Proc{..} = intercalate "\n\n" . map (genRegImpl insts buttons) $ regs
 
 genMemoryOut :: Memory -> [String]
 genMemoryOut (Memory name dataWidth addressWidth) =
@@ -328,16 +337,28 @@ genMemoryWrite insts buttons (Memory name dataWidth addressWidth) = combineLines
 genMemoryWrites :: Proc -> String
 genMemoryWrites Proc{..} = intercalate "\n\n" . map (genMemoryWrite insts buttons) $ memorys
 
-genUpdateInsts :: Proc -> String
-genUpdateInsts Proc{..} = intercalate "\n" $
+genInstRegDecl :: Proc -> String
+genInstRegDecl Proc{..} =
+  "  reg [" ++ (show . head . mapMaybe (\case EncType InstT n -> Just n; _ -> Nothing) $ encTypes) ++ ":0] inst = 0;"
+
+genInstRegImpl :: Proc -> String
+genInstRegImpl Proc{..} = case instRule of
+  (InstRule expr) -> intercalate "\n"
+    [ "  wire [" ++ (show . head . mapMaybe (\case EncType InstT n -> Just n; _ -> Nothing) $ encTypes) ++ ":0] new_inst ="
+    , "    execute ? " ++ genExpr ([], []) ([], ([], ConstBitsExpr [])) expr ++ " :"
+    , "    inst;"
+    ]
+
+genUpdateRegs :: Proc -> String
+genUpdateRegs Proc{..} = intercalate "\n" $
   [ "  always @ (posedge clk) begin"
   ] ++
   alignLines' ' ' " "
     [
       [ "    " ++ name
       , "<="
-      , "new_" ++ name
-      ] | (Inst name _ _ _) <- insts] ++
+      , "new_" ++ name ++ ";"
+      ] | (Reg name _ _) <- (Reg "inst" undefined undefined) : regs] ++
   [ "  end"
   ]
 
@@ -347,8 +368,11 @@ genProcModule = combineBlocks
   , genButtonTriggers
   , genMemoryOuts
   , boilerplateRegs
-  , genRegs
-  , genUpdateInsts
+  , genRegDecls
+  , genInstRegDecl
+  , genRegImpls
+  , genInstRegImpl
+  , genUpdateRegs
   , genMemoryIns
   , genMemoryAddrs
   , genMemoryWrites

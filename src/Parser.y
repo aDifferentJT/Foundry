@@ -53,6 +53,7 @@ import Data.List(intercalate)
   ']'           { CloseSquare }
   bits          { Bits $$ }
   int           { Int $$ }
+  instRegTok    { InstRegTok }
   varTok        { VarTok $$ }
   regT          { RegTok }
   bitsT         { BitsTok }
@@ -80,7 +81,7 @@ Proc              : RawProc                                      {%
         [x] -> return x
         _   -> throwGlobalError "More than one register block"
       let regEncs = filter (\case RegEnc _ _ -> True; _ -> False) rawEncs
-      regs'' <- case zipBy (\(RegType n _) -> n) (\(RegEnc n _) -> n) regs' regEncs of
+      regs <- case zipBy (\(RegType n _) -> n) (\(RegEnc n _) -> n) regs' regEncs of
         (_, (RegType n _):_, _) -> throwGlobalError $ "Register " ++ n ++ " has no encoding"
         (_, _, (RegEnc n _):_) -> throwGlobalError $ "Encoding given for unknown register " ++ n
         (xs, [], []) -> return $ [Reg n t e | (RegType n t, RegEnc _ e) <- xs]
@@ -91,7 +92,7 @@ Proc              : RawProc                                      {%
       let instEncs = filter (\case InstEnc _ _ _ -> True; _ -> False) rawEncs
       let instImpls = filter (\case InstImpl _ _ _ -> True; _ -> False) rawImpls
       let instName n vs = intercalate " " (n : ["<" ++ v ++ ">" | v <- vs])
-      insts'' <- case zip3By (\(InstType n _) -> n) (\(InstImpl n _ _) -> n) (\(InstEnc n _ _) -> n) insts' instImpls instEncs of
+      insts <- case zip3By (\(InstType n _) -> n) (\(InstImpl n _ _) -> n) (\(InstEnc n _ _) -> n) insts' instImpls instEncs of
         (_, (InstType n _, _):_, _, _, _, _, _)    -> throwGlobalError $ "Instruction " ++ n ++ " has no encoding"
         (_, _, (InstType n _, _):_, _, _, _, _)    -> throwGlobalError $ "Instruction " ++ n ++ " has no implementation"
         (_, _, _, (InstImpl n vs _, _):_, _, _, _) -> throwGlobalError $ "Implementation and encoding given for unknown instruction " ++ instName n vs
@@ -104,23 +105,29 @@ Proc              : RawProc                                      {%
         [x] -> return x
         _   -> throwGlobalError "More than one register block"
       let buttonImpls = filter (\case ButtonImpl _ _ -> True; _ -> False) rawImpls
-      buttons'' <- case zipBy (\(ButtonType n _) -> n) (\(ButtonImpl n _) -> n) buttons' buttonImpls of
+      buttons <- case zipBy (\(ButtonType n _) -> n) (\(ButtonImpl n _) -> n) buttons' buttonImpls of
         (_, (ButtonType n _):_, _) -> throwGlobalError $ "Button " ++ n ++ " has no implementation"
         (_, _, (ButtonImpl n _):_) -> throwGlobalError $ "Implementation given for unknown button " ++ n
         (xs, [], []) -> return $ [Button n t rs | (ButtonType n t, ButtonImpl _ rs) <- xs]
-      memory' <- case rawMemory of
+      memorys <- case rawMemorys of
         []  -> throwGlobalError "No register block"
         [x] -> return x
         _   -> throwGlobalError "More than one register block"
-      return $ Proc regs'' insts'' buttons'' memory' rawEncTypes
+      instRule <- case rawInstRule of
+        []  -> throwGlobalError "Rule not given for inst"
+        [x] -> return x
+        _   -> throwGlobalError "Moret than one rule given for inst"
+      let encTypes = rawEncTypes
+      return Proc{..}
 }
 
 RawProc           :: { RawProc }
-RawProc           : {- empty -}                                  { RawProc [] [] [] [] [] [] [] }
+RawProc           : {- empty -}                                  { RawProc [] [] [] [] [] [] [] [] }
                   | RegTypes RawProc                             { $2 { rawRegs     = $1 : rawRegs     $2 } }
                   | InstTypes RawProc                            { $2 { rawInsts    = $1 : rawInsts    $2 } }
                   | ButtonTypes RawProc                          { $2 { rawButtons  = $1 : rawButtons  $2 } }
-                  | MemoryTypes RawProc                          { $2 { rawMemory   = $1 : rawMemory   $2 } }
+                  | MemoryTypes RawProc                          { $2 { rawMemorys  = $1 : rawMemorys  $2 } }
+                  | InstRule RawProc                             { $2 { rawInstRule = $1 : rawInstRule $2 } }
                   | EncType RawProc                              { $2 { rawEncTypes = $1 : rawEncTypes $2 } }
                   | Enc RawProc                                  { $2 { rawEncs     = $1 : rawEncs     $2 } }
                   | Impl RawProc                                 { $2 { rawImpls    = $1 : rawImpls    $2 } }
@@ -270,6 +277,9 @@ Impl              : Var List(Arg) '{' List(ImplRule) '}'         {%
         return (ButtonImpl $1 $4)
       (MemoryDefn _ _) -> throwLocalError 1 $ "Implementation given for memory " ++ $1
 }
+
+InstRule          :: { InstRule }
+InstRule          : instRegTok '<-' Expr                         { InstRule $3 }
 
 {
 parseError :: Token -> ParserMonad a
