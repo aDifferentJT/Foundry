@@ -9,7 +9,6 @@ module Proc
   , BoolExpr(..)
   , LValue(..)
   , ImplRule(..)
-  , InstRule(..)
   , Reg(..)
   , Inst(..)
   , Button(..)
@@ -95,9 +94,6 @@ data LValue
 data ImplRule = ImplRule LValue Expr
   deriving Show
 
-newtype InstRule = InstRule Expr
-  deriving Show
-
 data Reg = Reg String Int [Bit]
   deriving Show
 
@@ -115,7 +111,7 @@ data Proc = Proc
   , insts    :: [Inst]
   , buttons  :: [Button]
   , memorys  :: [Memory]
-  , instRule :: InstRule
+  , always   :: [ImplRule]
   , encTypes :: [EncType]
   }
   deriving Show

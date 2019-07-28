@@ -7,12 +7,21 @@ module Parser.AST
   , UnsizedBitsExpr(..)
   , Enc(..)
   , Impl(..)
-  , RawProc(..)
+  , RawProc(
+      RawProc
+      , _rawRegs
+      , _rawInsts
+      , _rawButtons
+      , _rawMemorys
+      , _rawEncTypes
+      , _rawEncs
+      , _rawImpls
+    )
+  , initialProc
   , rawRegs
   , rawInsts
   , rawButtons
   , rawMemorys
-  , rawInstRule
   , rawEncTypes
   , rawEncs
   , rawImpls
@@ -25,7 +34,6 @@ import Proc
   , EncType
   , BitsExpr
   , ImplRule
-  , InstRule
   , Memory
   )
 
@@ -66,11 +74,13 @@ data RawProc = RawProc
   , _rawInsts    :: [[InstType]]
   , _rawButtons  :: [[ButtonType]]
   , _rawMemorys  :: [[Memory]]
-  , _rawInstRule :: [InstRule]
   , _rawEncTypes :: [EncType]
   , _rawEncs     :: [Enc]
   , _rawImpls    :: [Impl]
   }
   deriving Show
+
+initialProc :: RawProc
+initialProc = RawProc [] [] [] [] [] [] []
 
 makeLenses ''RawProc

@@ -56,7 +56,6 @@ import Data.List(intercalate)
   ']'           { Locatable CloseSquare _ }
   bits          { Locatable (Bits $$) _ }
   int           { Locatable (Int $$) _ }
-  instRegTok    { Locatable InstRegTok _ }
   varTok        { Locatable (VarTok $$) _ }
   regT          { Locatable RegTok _ }
   bitsT         { Locatable BitsTok _ }
@@ -93,7 +92,7 @@ Proc              : RawProc                                      {%
                  [x] -> return x
                  _   -> throwGlobalError "More than one instruction block"
       let instEncs = filter (\case InstEnc _ _ _ -> True; _ -> False) _rawEncs
-      let instImpls = filter (\case InstImpl _ _ _ -> True; _ -> False) _rawImpls
+      let instImpls = filter (\case InstImpl "always" _ _ -> False; InstImpl _ _ _ -> True; _ -> False) _rawImpls
       let instName n vs = intercalate " " (n : ["<" ++ v ++ ">" | v <- vs])
       insts <- case zip3By (\(InstType n _) -> n) (\(InstImpl n _ _) -> n) (\(InstEnc n _ _) -> n) insts' instImpls instEncs of
         (_, (InstType n _, _):_, _, _, _, _, _)    -> throwGlobalError $ "Instruction " ++ n ++ " has no encoding"
@@ -116,21 +115,20 @@ Proc              : RawProc                                      {%
         []  -> throwGlobalError "No register block"
         [x] -> return x
         _   -> throwGlobalError "More than one register block"
-      instRule <- case _rawInstRule of
-        []  -> throwGlobalError "Rule not given for inst"
-        [x] -> return x
-        _   -> throwGlobalError "Moret than one rule given for inst"
+      always <- case filter (\case InstImpl "always" _ _ -> True; _ -> False) _rawImpls of
+        []                        -> return []
+        [InstImpl "always" [] rs] -> return rs
+        _                         -> throwGlobalError "More than one always block"
       let encTypes = _rawEncTypes
-      return $ (\_ -> Proc{..}) `fmap` $1
+      return $ Proc{..} <$ $1
 }
 
 RawProc           :: { Locatable RawProc }
-RawProc           : {- empty -}                                  { pure $ RawProc [] [] [] [] [] [] [] [] }
+RawProc           : {- empty -}                                  { pure $ initialProc }
                   | RegTypes RawProc                             { over rawRegs     `fmap` (fmap (:) $1) <*> $2 }
                   | InstTypes RawProc                            { over rawInsts    `fmap` (fmap (:) $1) <*> $2 }
                   | ButtonTypes RawProc                          { over rawButtons  `fmap` (fmap (:) $1) <*> $2 }
                   | MemoryTypes RawProc                          { over rawMemorys  `fmap` (fmap (:) $1) <*> $2 }
-                  | InstRule RawProc                             { over rawInstRule `fmap` (fmap (:) $1) <*> $2 }
                   | EncType RawProc                              { over rawEncTypes `fmap` (fmap (:) $1) <*> $2 }
                   | Enc RawProc                                  { over rawEncs     `fmap` (fmap (:) $1) <*> $2 }
                   | Impl RawProc                                 { over rawImpls    `fmap` (fmap (:) $1) <*> $2 }
@@ -280,9 +278,6 @@ Impl              : Var List(Arg) '{' List(ImplRule) '}'         {% fmap (<* $5)
         return (ButtonImpl `fmap` $1 <*> $4)
       (MemoryDefn _ _) -> throwLocalError $1 $ "Implementation given for memory " ++ locatableValue $1
 }
-
-InstRule          :: { Locatable InstRule }
-InstRule          : instRegTok '<-' Expr                         { InstRule `fmap` $3 <* $1 }
 
 {
 parseError :: Locatable Token -> ParserMonad a

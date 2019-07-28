@@ -149,6 +149,14 @@ data ParserState = ParserState
   , stateEncTypes     :: Map.Map Type Int
   }
 
+initialIdents :: Map.Map String (Locatable Defn)
+initialIdents = Map.fromList
+  [ ("always", pure $ InstDefn [])
+  ]
+
+initialParserState :: String -> ParserState
+initialParserState s = ParserState (AlexInput alexStartPos '\n' [] s) Set.empty initialIdents Map.empty
+
 type ParserMonad a = StateT ParserState (Either (String, Maybe (AlexPosn, AlexPosn))) a
 
 prettyPosn :: Maybe (AlexPosn, AlexPosn) -> String
@@ -390,7 +398,7 @@ instEncDim ts vs e = do
   return (n <$ e, (bs, e') <$ e)
 
 runParser' :: ParserMonad a -> String -> Either (String, Maybe (AlexPosn, AlexPosn)) a
-runParser' m s = (fst <$>) . runStateT m $ ParserState (AlexInput alexStartPos '\n' [] s) Set.empty Map.empty Map.empty
+runParser' m = (fst <$>) . runStateT m . initialParserState
 
 printErrors :: String -> Either (String, Maybe (AlexPosn, AlexPosn)) a -> Either String a
 printErrors _ (Right a)           = Right a

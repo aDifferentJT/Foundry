@@ -53,7 +53,6 @@ tokens :-
   \]                          { wrapPlainToken CloseSquare }
   0b[01]+                     { wrapFuncToken $ Bits . ((map (read . (:[])) . drop 2) <$>) }
   $digit+                     { wrapFuncToken $ Int . (read <$>) }
-  inst                        { wrapPlainToken InstRegTok }
   $lower [$alpha $digit \_]*  { wrapFuncToken VarTok }
   Reg                         { wrapPlainToken RegTok }
   Bits                        { wrapPlainToken BitsTok }
@@ -94,7 +93,6 @@ data Token
   | CloseSquare
   | Bits (Locatable [Bit])
   | Int (Locatable Int)
-  | InstRegTok
   | VarTok (Locatable String)
   | RegTok
   | BitsTok

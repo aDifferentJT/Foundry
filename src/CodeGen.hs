@@ -1,4 +1,4 @@
-{-# LANGUAGE LambdaCase, RecordWildCards #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module CodeGen
   ( genCode
@@ -9,7 +9,7 @@ import Utils (Bit(..))
 
 import Control.Arrow (first)
 import Data.List (intercalate, transpose)
-import Data.Maybe (mapMaybe)
+import Data.Maybe (mapMaybe, maybeToList)
 
 padRightTo :: Int -> a -> [a] -> [a]
 padRightTo n x  []    = replicate n x
@@ -231,6 +231,29 @@ genIsButtonRule pred (Button name _ rules) =
       )
     (_:_:_) -> error "More than one rule"
 
+genAlwaysRule :: (ImplRule -> Maybe Expr) -> [ImplRule] -> Maybe ([String], String)
+genAlwaysRule pred rules =
+  case mapMaybe pred rules of
+    []      -> Nothing
+    [expr]  -> Just
+      ( [ "    execute ?"
+        , genExpr ([], rules) ([], ([], ConstBitsExpr [])) expr
+        , ":"
+        ]
+      , "Always"
+      )
+    (_:_:_) -> error "More than one rule"
+
+genIsAlwaysRule :: (ImplRule -> Maybe Expr) -> [ImplRule] -> Maybe (String, String)
+genIsAlwaysRule pred rules =
+  case mapMaybe pred rules of
+    []      -> Nothing
+    [expr]  -> Just
+      ( "    execute |"
+      , "Always"
+      )
+    (_:_:_) -> error "More than one rule"
+
 genRegDecl :: Reg -> [String]
 genRegDecl (Reg name size _) =
   [ "  reg [" ++ show (size - 1) ++ ":0] "
@@ -241,14 +264,14 @@ genRegDecl (Reg name size _) =
 genRegDecls :: Proc -> String
 genRegDecls = combineLines' ' ' " " "\n" . map genRegDecl . regs
 
-genRegImpl :: [Inst] -> [Button] -> Reg -> String
-genRegImpl insts buttons (Reg name size enc) = combineLines ' ' " // " "\n" $
+genRegImpl :: [Inst] -> [Button] -> [ImplRule] -> Reg -> String
+genRegImpl insts buttons always (Reg name size enc) = combineLines ' ' " // " "\n" $
   [ ("  // Register: " ++ name, "")
   , ("  wire [" ++ show (size - 1) ++ ":0] new_" ++ name ++ " =", "")
   ] ++
   (uncurry zip . first (alignLines' ' ' " ") . unzip . mapMaybe (genInstRule regPred) $ insts) ++
   (uncurry zip . first (alignLines' ' ' " ") . unzip . mapMaybe (genButtonRule regPred) $ buttons) ++
-  [("    execute ? pc + 1 :", "Increment PC") | name == "pc"] ++
+  (uncurry zip . first (alignLines' ' ' " ") . unzip . maybeToList . genAlwaysRule regPred $ always) ++
   [ ("    " ++ name ++ ";", "Fallthrough to keep it the same")
   ]
   where regPred :: ImplRule -> Maybe Expr
@@ -258,7 +281,7 @@ genRegImpl insts buttons (Reg name size enc) = combineLines ' ' " // " "\n" $
         regPred  _      = Nothing
 
 genRegImpls :: Proc -> String
-genRegImpls Proc{..} = intercalate "\n\n" . map (genRegImpl insts buttons) $ regs
+genRegImpls Proc{..} = intercalate "\n\n" . map (genRegImpl insts buttons always) $ regs
 
 genMemoryOut :: Memory -> [String]
 genMemoryOut (Memory name dataWidth addressWidth) =
@@ -283,13 +306,14 @@ genMemoryRAM (Memory name dataWidth addressWidth) =
 genMemoryRAMs :: Proc -> String
 genMemoryRAMs = combineLines' ' ' " " "\n" . map genMemoryRAM . memorys
 
-genMemoryIn :: [Inst] -> [Button] -> Memory -> String
-genMemoryIn insts buttons (Memory name dataWidth addressWidth) = combineLines ' ' " // " "\n" $
+genMemoryIn :: Proc -> Memory -> String
+genMemoryIn Proc{..} (Memory name dataWidth addressWidth) = combineLines ' ' " // " "\n" $
   [ ("  // Memory: " ++ name, "")
   , ("  wire [" ++ show (dataWidth - 1) ++ ":0] " ++ name ++ "_in =", "")
   ] ++
   (uncurry zip . first (alignLines' ' ' " ") . unzip . mapMaybe (genInstRule memoryPred) $ insts) ++
   (uncurry zip . first (alignLines' ' ' " ") . unzip . mapMaybe (genButtonRule memoryPred) $ buttons) ++
+  (uncurry zip . first (alignLines' ' ' " ") . unzip . maybeToList . genAlwaysRule memoryPred $ always) ++
   [ ("    0;", "Fallthrough, should never be used")
   ]
   where memoryPred :: ImplRule -> Maybe Expr
@@ -299,33 +323,59 @@ genMemoryIn insts buttons (Memory name dataWidth addressWidth) = combineLines ' 
         memoryPred  _   = Nothing
 
 genMemoryIns :: Proc -> String
-genMemoryIns Proc{..} = intercalate "\n\n" . map (genMemoryIn insts buttons) $ memorys
+genMemoryIns p = intercalate "\n\n" . map (genMemoryIn p) . memorys $ p
 
-genMemoryAddr :: [Inst] -> [Button] -> Memory -> String
-genMemoryAddr insts buttons (Memory name dataWidth addressWidth) = combineLines ' ' " // " "\n" $
+genMemoryAddr :: Proc -> Memory -> String
+genMemoryAddr Proc{..} (Memory name dataWidth addressWidth) = combineLines ' ' " // " "\n" $
   [ ("  // Memory: " ++ name, "")
   , ("  wire [" ++ show (addressWidth - 1) ++ ":0] " ++ name ++ "_addr =", "")
   ] ++
   (uncurry zip . first (alignLines' ' ' " ") . unzip . mapMaybe (genInstRule memoryPred) $ insts) ++
   (uncurry zip . first (alignLines' ' ' " ") . unzip . mapMaybe (genButtonRule memoryPred) $ buttons) ++
+  (uncurry zip . first (alignLines' ' ' " ") . unzip . maybeToList . genAlwaysRule memoryPred $ always) ++
   [ ("    0;", "Fallthrough, should never be used")
   ]
   where memoryPred :: ImplRule -> Maybe Expr
         memoryPred (ImplRule (MemAccessLValue mem expr) _)
           | mem == name = Just expr
-          | otherwise   = Nothing
-        memoryPred  _   = Nothing
+          | otherwise   = memAccessForExpr expr
+        memoryPred (ImplRule _ expr) = memAccessForExpr expr
+        memAccessForExpr :: Expr -> Maybe Expr
+        memAccessForExpr (VarExpr _)           = Nothing
+        memAccessForExpr (RegExpr _)           = Nothing
+        memAccessForExpr (MemAccessExpr _ e)   = Just e
+        memAccessForExpr (ConstExpr _)         = Nothing
+        memAccessForExpr (BinaryConstExpr _)   = Nothing
+        memAccessForExpr (OpExpr _ e1 e2)      = case memAccessForExpr e1 of
+          Just e1' -> Just e1'
+          Nothing  -> memAccessForExpr e2
+        memAccessForExpr (TernaryExpr b e1 e2) = case memAccessForBoolExpr b of
+          Just b' -> Just b'
+          Nothing -> case memAccessForExpr e1 of
+            Just e1' -> Just e1'
+            Nothing  -> memAccessForExpr e2
+        memAccessForBoolExpr :: BoolExpr -> Maybe Expr
+        memAccessForBoolExpr (EqualityExpr   e1 e2) = case memAccessForExpr e1 of
+          Just e1' -> Just e1'
+          Nothing  -> memAccessForExpr e2
+        memAccessForBoolExpr (LogicalAndExpr b1 b2) = case memAccessForBoolExpr b1 of
+          Just b1' -> Just b1'
+          Nothing  -> memAccessForBoolExpr b2
+        memAccessForBoolExpr (LogicalOrExpr  b1 b2) = case memAccessForBoolExpr b1 of
+          Just b1' -> Just b1'
+          Nothing  -> memAccessForBoolExpr b2
 
 genMemoryAddrs :: Proc -> String
-genMemoryAddrs Proc{..} = intercalate "\n\n" . map (genMemoryAddr insts buttons) $ memorys
+genMemoryAddrs p = intercalate "\n\n" . map (genMemoryAddr p) . memorys $ p
 
-genMemoryWrite :: [Inst] -> [Button] -> Memory -> String
-genMemoryWrite insts buttons (Memory name dataWidth addressWidth) = combineLines ' ' " // " "\n" $
+genMemoryWrite :: Proc -> Memory -> String
+genMemoryWrite Proc{..} (Memory name dataWidth addressWidth) = combineLines ' ' " // " "\n" $
   [ ("  // Memory: " ++ name, "")
   , ("  wire [" ++ show (addressWidth - 1) ++ ":0] " ++ name ++ "_write =", "")
   ] ++
   mapMaybe (genIsInstRule memoryPred) insts ++
   mapMaybe (genIsButtonRule memoryPred) buttons ++
+  (maybeToList . genIsAlwaysRule memoryPred $ always) ++
   [ ("    0;", "Fallthrough, default to not writing")
   ]
   where memoryPred :: ImplRule -> Maybe Expr
@@ -335,19 +385,7 @@ genMemoryWrite insts buttons (Memory name dataWidth addressWidth) = combineLines
         memoryPred  _   = Nothing
 
 genMemoryWrites :: Proc -> String
-genMemoryWrites Proc{..} = intercalate "\n\n" . map (genMemoryWrite insts buttons) $ memorys
-
-genInstRegDecl :: Proc -> String
-genInstRegDecl Proc{..} =
-  "  reg [" ++ (show . head . mapMaybe (\case EncType InstT n -> Just n; _ -> Nothing) $ encTypes) ++ ":0] inst = 0;"
-
-genInstRegImpl :: Proc -> String
-genInstRegImpl Proc{..} = case instRule of
-  (InstRule expr) -> intercalate "\n"
-    [ "  wire [" ++ (show . head . mapMaybe (\case EncType InstT n -> Just n; _ -> Nothing) $ encTypes) ++ ":0] new_inst ="
-    , "    execute ? " ++ genExpr ([], []) ([], ([], ConstBitsExpr [])) expr ++ " :"
-    , "    inst;"
-    ]
+genMemoryWrites p = intercalate "\n\n" . map (genMemoryWrite p) . memorys $ p
 
 genUpdateRegs :: Proc -> String
 genUpdateRegs Proc{..} = intercalate "\n" $
@@ -369,9 +407,7 @@ genProcModule = combineBlocks
   , genMemoryOuts
   , boilerplateRegs
   , genRegDecls
-  , genInstRegDecl
   , genRegImpls
-  , genInstRegImpl
   , genUpdateRegs
   , genMemoryIns
   , genMemoryAddrs
