@@ -7,6 +7,7 @@ module Parser.Lexer
   , readToken
   ) where
 
+import Parser.AlexPosn (AlexPosn, Locatable(Locatable))
 import Parser.Monad
 
 import Utils (Bit(..))
@@ -23,44 +24,44 @@ tokens :-
 
   $white+    ;
   "--".*     ;
-  registers                   { const . return $ Registers }
-  instructions                { const . return $ Instructions }
-  buttons                     { const . return $ Buttons }
-  memory                      { const . return $ MemoryTok }
-  \:                          { const . return $ Colon }
-  \-                          { const . return $ Hyphen }
-  \=                          { const . return $ Equals }
-  \+                          { const . return $ Plus }
-  \*                          { const . return $ Times }
-  \/                          { const . return $ Slash }
-  \&                          { const . return $ And }
-  \|                          { const . return $ Or }
-  \^                          { const . return $ Xor }
-  \+\+                        { const . return $ Concat }
-  \=\=                        { const . return $ Equality }
-  \&\&                        { const . return $ LogicalAnd }
-  \|\|                        { const . return $ LogicalOr }
-  \?                          { const . return $ Question }
-  \<\-                        { const . return $ LeftArrow }
-  \<                          { const . return $ OpenAngle }
-  \>                          { const . return $ CloseAngle }
-  \{                          { const . return $ OpenCurly }
-  \}                          { const . return $ CloseCurly }
-  \(                          { const . return $ OpenParen }
-  \)                          { const . return $ CloseParen }
-  \[                          { const . return $ OpenSquare }
-  \]                          { const . return $ CloseSquare }
-  0b[01]+                     { return . Bits . map (read . (:[])) . drop 2 }
-  $digit+                     { return . Int . read }
-  inst                        { const . return $ InstRegTok }
-  $lower [$alpha $digit \_]*  { return . VarTok }
-  Reg                         { const . return $ RegTok }
-  Bits                        { const . return $ BitsTok }
-  Int                         { const . return $ IntTok }
-  Inst                        { const . return $ InstTok }
-  Button                      { const . return $ ButtonTok }
-  RAM                         { const . return $ RAMTok }
-  $upper [$alpha $digit \_]*  { throwLocalError 0 . ("Unrecognised type name: " ++) }
+  registers                   { wrapPlainToken Registers }
+  instructions                { wrapPlainToken Instructions }
+  buttons                     { wrapPlainToken Buttons }
+  memory                      { wrapPlainToken MemoryTok }
+  \:                          { wrapPlainToken Colon }
+  \-                          { wrapPlainToken Hyphen }
+  \=                          { wrapPlainToken Equals }
+  \+                          { wrapPlainToken Plus }
+  \*                          { wrapPlainToken Times }
+  \/                          { wrapPlainToken Slash }
+  \&                          { wrapPlainToken And }
+  \|                          { wrapPlainToken Or }
+  \^                          { wrapPlainToken Xor }
+  \+\+                        { wrapPlainToken Concat }
+  \=\=                        { wrapPlainToken Equality }
+  \&\&                        { wrapPlainToken LogicalAnd }
+  \|\|                        { wrapPlainToken LogicalOr }
+  \?                          { wrapPlainToken Question }
+  \<\-                        { wrapPlainToken LeftArrow }
+  \<                          { wrapPlainToken OpenAngle }
+  \>                          { wrapPlainToken CloseAngle }
+  \{                          { wrapPlainToken OpenCurly }
+  \}                          { wrapPlainToken CloseCurly }
+  \(                          { wrapPlainToken OpenParen }
+  \)                          { wrapPlainToken CloseParen }
+  \[                          { wrapPlainToken OpenSquare }
+  \]                          { wrapPlainToken CloseSquare }
+  0b[01]+                     { wrapFuncToken $ Bits . ((map (read . (:[])) . drop 2) <$>) }
+  $digit+                     { wrapFuncToken $ Int . (read <$>) }
+  inst                        { wrapPlainToken InstRegTok }
+  $lower [$alpha $digit \_]*  { wrapFuncToken VarTok }
+  Reg                         { wrapPlainToken RegTok }
+  Bits                        { wrapPlainToken BitsTok }
+  Int                         { wrapPlainToken IntTok }
+  Inst                        { wrapPlainToken InstTok }
+  Button                      { wrapPlainToken ButtonTok }
+  RAM                         { wrapPlainToken RAMTok }
+  $upper [$alpha $digit \_]*  { \str ps -> throwLocalErrorAt ps ("Unrecognised type name: " ++ str) }
 
 {
 data Token
@@ -91,10 +92,10 @@ data Token
   | CloseParen
   | OpenSquare
   | CloseSquare
-  | Bits [Bit]
-  | Int Int
+  | Bits (Locatable [Bit])
+  | Int (Locatable Int)
   | InstRegTok
-  | VarTok String
+  | VarTok (Locatable String)
   | RegTok
   | BitsTok
   | IntTok
@@ -102,15 +103,27 @@ data Token
   | ButtonTok
   | RAMTok
   | EOF
-  deriving (Eq,Show)
+  deriving (Show)
 
-readToken :: ParserMonad Token
+wrapFuncToken :: (Locatable b -> a) -> b -> (AlexPosn, AlexPosn) -> ParserMonad (Locatable a)
+wrapFuncToken f s ps = return $ Locatable (f . Locatable s . Just $ ps) (Just ps)
+
+wrapPlainToken :: a -> b -> (AlexPosn, AlexPosn) -> ParserMonad (Locatable a)
+wrapPlainToken = wrapFuncToken . const
+
+readToken :: ParserMonad (Locatable Token)
 readToken = do
   ParserState{..} <- State.get
   case alexScan stateInput 0 of
-    AlexEOF                -> return EOF
-    AlexError input'       -> State.put ParserState{ stateInput = input', .. } >> throwLocalError 0 "Could not lex token"
-    AlexSkip input' _      -> State.put ParserState{ stateInput = input', .. } >> readToken
-    AlexToken input' len t -> State.put ParserState{ stateInput = input' { tokPos = take 10 $ charPos stateInput : tokPos input' }, .. } >> (t . take len . str $ stateInput)
+    AlexEOF                ->
+      return . Locatable EOF . Just $ (charPos stateInput, charPos stateInput)
+    AlexError input'       -> do
+      State.put ParserState{ stateInput = input', .. }
+      throwLocalErrorAt (charPos stateInput, alexMove (charPos input') (head . str $ input')) "Could not lex token"
+    AlexSkip input' _      -> do
+      State.put ParserState{ stateInput = input', .. }
+      readToken
+    AlexToken input' len t -> do
+      State.put ParserState{ stateInput = input', .. }
+      (t . take len . str $ stateInput) (charPos stateInput, charPos input')
 }
-

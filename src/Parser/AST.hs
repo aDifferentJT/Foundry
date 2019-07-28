@@ -1,3 +1,5 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Parser.AST
   ( RegType(..)
   , InstType(..)
@@ -6,7 +8,17 @@ module Parser.AST
   , Enc(..)
   , Impl(..)
   , RawProc(..)
+  , rawRegs
+  , rawInsts
+  , rawButtons
+  , rawMemorys
+  , rawInstRule
+  , rawEncTypes
+  , rawEncs
+  , rawImpls
   ) where
+
+import Parser.AlexPosn (Locatable)
 
 import Proc
   ( Type
@@ -19,6 +31,8 @@ import Proc
 
 import Utils (Bit)
 
+import Control.Lens (makeLenses)
+
 data RegType = RegType String Int
   deriving Show
 
@@ -29,12 +43,12 @@ data ButtonType = ButtonType String Int
   deriving Show
 
 data UnsizedBitsExpr
-  = UnsizedConstBitsExpr [Bit]
-  | UnsizedEncBitsExpr String
-  | UnsizedConcatBitsExpr UnsizedBitsExpr UnsizedBitsExpr
-  | UnsizedAndBitsExpr UnsizedBitsExpr UnsizedBitsExpr
-  | UnsizedOrBitsExpr UnsizedBitsExpr UnsizedBitsExpr
-  | UnsizedXorBitsExpr UnsizedBitsExpr UnsizedBitsExpr
+  = UnsizedConstBitsExpr (Locatable [Bit])
+  | UnsizedEncBitsExpr (Locatable String)
+  | UnsizedConcatBitsExpr (Locatable UnsizedBitsExpr) (Locatable UnsizedBitsExpr)
+  | UnsizedAndBitsExpr (Locatable UnsizedBitsExpr) (Locatable UnsizedBitsExpr)
+  | UnsizedOrBitsExpr (Locatable UnsizedBitsExpr) (Locatable UnsizedBitsExpr)
+  | UnsizedXorBitsExpr (Locatable UnsizedBitsExpr) (Locatable UnsizedBitsExpr)
   deriving Show
 
 data Enc
@@ -47,15 +61,16 @@ data Impl
   | ButtonImpl String [ImplRule]
   deriving Show
 
-data RawProc = RawProc 
-  { rawRegs     :: [[RegType]]
-  , rawInsts    :: [[InstType]]
-  , rawButtons  :: [[ButtonType]]
-  , rawMemorys  :: [[Memory]]
-  , rawInstRule :: [InstRule]
-  , rawEncTypes :: [EncType]
-  , rawEncs     :: [Enc]
-  , rawImpls    :: [Impl]
+data RawProc = RawProc
+  { _rawRegs     :: [[RegType]]
+  , _rawInsts    :: [[InstType]]
+  , _rawButtons  :: [[ButtonType]]
+  , _rawMemorys  :: [[Memory]]
+  , _rawInstRule :: [InstRule]
+  , _rawEncTypes :: [EncType]
+  , _rawEncs     :: [Enc]
+  , _rawImpls    :: [Impl]
   }
   deriving Show
 
+makeLenses ''RawProc

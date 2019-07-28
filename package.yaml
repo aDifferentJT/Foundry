@@ -29,6 +29,7 @@ library:
   dependencies:
     - array
     - containers
+    - lens
     - mtl
     - transformers
 

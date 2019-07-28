@@ -22,6 +22,8 @@ cabal.project.local~
 .HTF/
 .ghc.environment.*
 
+*.dump-hi
+
 *.lock
 Foundry.cabal
 
@@ -29,4 +31,3 @@ examples/*.v
 
 FPGA_examples
 FPGA.pdf
-

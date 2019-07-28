@@ -20,7 +20,7 @@ import System.Environment (getArgs)
 import System.FilePath ((-<.>))
 
 main :: IO ()
-main = (runExceptT $
+main = runExceptT (
   do
     Options{..} <- getOpts
     ast <- parseFile fn
@@ -51,4 +51,3 @@ getOpts = lift (getOpt Permute options <$> getArgs) >>= \case
     when showHelp $ throwError "HELP"
     return Options{..}
   (_, _, errs) -> fail . show $ errs
-

@@ -48,7 +48,7 @@ genBits :: [Bit] -> String
 genBits bs = (show . length $ bs) ++ "'b" ++ concatMap show bs
 
 genInstDef :: Inst -> [String]
-genInstDef (Inst n _ _ (_, (bs, e))) = 
+genInstDef (Inst n _ _ (_, (bs, e))) =
   [ "`define is_inst_" ++ n ++ "(inst)"
   , "(inst[" ++ show (length bs) ++ ":0]"
   , "=="
@@ -358,7 +358,7 @@ genUpdateRegs Proc{..} = intercalate "\n" $
       [ "    " ++ name
       , "<="
       , "new_" ++ name ++ ";"
-      ] | (Reg name _ _) <- (Reg "inst" undefined undefined) : regs] ++
+      ] | (Reg name _ _) <- Reg "inst" undefined undefined : regs] ++
   [ "  end"
   ]
 
@@ -382,4 +382,3 @@ genProcModule = combineBlocks
 
 genCode :: Proc -> String
 genCode = (++ "\n\n") . combineBlocks [genPreamble, genProcModule]
-

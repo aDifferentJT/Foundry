@@ -1,14 +1,17 @@
 {-# LANGUAGE MultiParamTypeClasses, FlexibleInstances, FlexibleContexts, TupleSections, RecordWildCards #-}
 
 module Parser.Monad
-  ( AlexInput(..)
+  ( alexMove
+  , AlexInput(AlexInput, charPos, charPrev, pending, str)
   , ignorePendingBytes
   , alexGetByte
   , alexInputPrevChar
-  , Defn(..)
-  , ParserState(..)
+  , Defn(RegDefn, InstDefn, ButtonDefn, MemoryDefn)
+  , ParserState(ParserState, stateInput, stateLocalVars, stateGlobalIdents, stateEncTypes)
   , ParserMonad
+  , Locatable(Locatable)
   , throwLocalError
+  , throwLocalErrorAt
   , throwGlobalError
   , defineLocalVar
   , defineReg
@@ -28,6 +31,11 @@ module Parser.Monad
   , instEncDim
   , runParser
   ) where
+
+import Parser.AlexPosn
+  ( AlexPosn(AlexPosn)
+  , Locatable(Locatable, locatableValue, locatablePosns)
+  )
 
 import Proc
   ( Type
@@ -62,7 +70,7 @@ import Utils (Bit)
 
 import Control.Arrow ((***))
 import Control.Monad (when, unless)
-import Control.Monad.Except (MonadError, throwError)
+import Control.Monad.Except (MonadError, ExceptT, runExceptT, throwError)
 import Control.Monad.Trans.State (StateT, runStateT)
 import qualified Control.Monad.Trans.State as State
 
@@ -95,18 +103,6 @@ utf8Encode = (fromIntegral *** map fromIntegral) . go . ord
 
 type Byte = Word8
 
--- Token positions
-
--- `Posn' records the location of a token in the input text.  It has three
--- fields: the address (number of characters preceding the token), line number
--- and column of a token within the file. `start_pos' gives the position of the
--- start of the file and `eof_pos' a standard encoding for the end of file.
--- `move_pos' calculates the new position after traversing a given character,
--- assuming the usual eight character tab stops.
-
-data AlexPosn = AlexPosn !Int !Int !Int
-  deriving (Eq, Show)
-
 alexStartPos :: AlexPosn
 alexStartPos = AlexPosn 0 1 1
 
@@ -119,8 +115,7 @@ alexMove (AlexPosn a l _) '\n' = AlexPosn (a + 1) (l + 1)   1
 alexMove (AlexPosn a l c) _    = AlexPosn (a + 1)  l       (c + 1)
 
 data AlexInput = AlexInput
-  { tokPos   :: [AlexPosn]  -- 5 most recent token positions
-  , charPos  :: AlexPosn    -- position of the char
+  { charPos  :: AlexPosn    -- position of the char
   , charPrev :: Char        -- previous char
   , pending  :: [Byte]      -- pending bytes on current char
   , str      :: String      -- current input string
@@ -139,7 +134,7 @@ alexGetByte AlexInput{..} = case (pending, str) of
   ([],   c:s) ->
     let p = alexMove charPos c in
     let (b, bs) = utf8Encode c in
-    p `seq`  Just (b, AlexInput tokPos p c bs s)
+    p `seq`  Just (b, AlexInput p c bs s)
 
 data Defn
   = RegDefn Int
@@ -150,143 +145,190 @@ data Defn
 data ParserState = ParserState
   { stateInput        :: AlexInput
   , stateLocalVars    :: Set.Set String
-  , stateGlobalIdents :: Map.Map String Defn
+  , stateGlobalIdents :: Map.Map String (Locatable Defn)
   , stateEncTypes     :: Map.Map Type Int
   }
 
-type ParserMonad a = StateT ParserState (Either (String, Maybe AlexPosn)) a
+type ParserMonad a = StateT ParserState (Either (String, Maybe (AlexPosn, AlexPosn))) a
 
-previousPos :: Int -> ParserMonad AlexPosn
-previousPos n = (!! n) . tokPos . stateInput <$> State.get
+prettyPosn :: Maybe (AlexPosn, AlexPosn) -> String
+prettyPosn (Just (AlexPosn _ l1 c1, AlexPosn _ l2 c2))
+  | l1 == l2  = "Line " ++ show l1 ++ " Column " ++ show c1 ++ "-" ++ show c2
+  | otherwise = "Line " ++ show l1 ++ " Column " ++ show c1 ++ " to Line " ++ show l2 ++ " Column " ++ show c2
+prettyPosn Nothing = "Unknown Position"
 
-throwLocalError :: Int -> String -> ParserMonad a
-throwLocalError n s = previousPos n >>= throwError . (s,) . Just
+throwLocalError :: Locatable a -> String -> ParserMonad b
+throwLocalError (Locatable _ ps) s = throwError (s, ps)
 
-throwGlobalError :: MonadError (String, Maybe AlexPosn) m => String -> m a
+throwLocalErrorAt :: (AlexPosn, AlexPosn) -> String -> ParserMonad b
+throwLocalErrorAt ps s = throwError (s, Just ps)
+
+throwGlobalError :: MonadError (String, Maybe (AlexPosn, AlexPosn)) m => String -> m a
 throwGlobalError = throwError . (, Nothing)
 
-defineLocalVar :: String -> ParserMonad String
-defineLocalVar var = do
+defineLocalVar :: Locatable String -> ParserMonad (Locatable String)
+defineLocalVar Locatable{..} = do
   ParserState{..} <- State.get
-  when (Set.member var stateLocalVars) . throwLocalError 2 $ "Variable " ++ var ++ " redefined"
-  when (Map.member var stateGlobalIdents) . throwLocalError 2 $ "Variable " ++ var ++ " has the same name as a previously defined identifier"
-  State.put $ ParserState{ stateLocalVars = Set.insert var stateLocalVars, .. }
-  return var
+  when (Set.member locatableValue stateLocalVars)    . throwLocalError Locatable{..} $ "Variable " ++ locatableValue ++ " redefined"
+  when (Map.member locatableValue stateGlobalIdents) . throwLocalError Locatable{..} $ "Variable " ++ locatableValue ++ " has the same name as an identifier previously defined at " ++ prettyPosn locatablePosns
+  State.put $ ParserState{ stateLocalVars = Set.insert locatableValue stateLocalVars, .. }
+  return Locatable{..}
 
-defineReg :: String -> Int -> ParserMonad RegType
+defineReg :: Locatable String -> Locatable Int -> ParserMonad (Locatable RegType)
 defineReg var n = do
   ParserState{..} <- State.get
-  case Map.lookup var stateGlobalIdents of
-    Just (RegDefn _)      -> throwLocalError 2 $ "Register " ++ var ++ " has the same name as a previously defined register"
-    Just (InstDefn _)     -> throwLocalError 2 $ "Register " ++ var ++ " has the same name as a previously defined instruction"
-    Just  ButtonDefn      -> throwLocalError 2 $ "Register " ++ var ++ " has the same name as a previously defined button"
-    Just (MemoryDefn _ _) -> throwLocalError 2 $ "Register " ++ var ++ " has the same name as a previously defined memory"
-    Nothing               -> State.put $ ParserState{ stateGlobalIdents = Map.insert var (RegDefn n) stateGlobalIdents, .. }
-  return $ RegType var n
+  case Map.lookup (locatableValue var) stateGlobalIdents of
+    Just (Locatable (RegDefn _)      ps) -> throwLocalError var $
+      "Register " ++ locatableValue var ++ " has the same name as a previously defined register, defined at " ++ prettyPosn ps
+    Just (Locatable (InstDefn _)     ps) -> throwLocalError var $
+      "Register " ++ locatableValue var ++ " has the same name as a previously defined instruction, defined at " ++ prettyPosn ps
+    Just (Locatable  ButtonDefn      ps) -> throwLocalError var $
+      "Register " ++ locatableValue var ++ " has the same name as a previously defined button, defined at " ++ prettyPosn ps
+    Just (Locatable (MemoryDefn _ _) ps) -> throwLocalError var $
+      "Register " ++ locatableValue var ++ " has the same name as a previously defined memory, defined at " ++ prettyPosn ps
+    Nothing               -> State.put $
+      ParserState{ stateGlobalIdents = Map.insert (locatableValue var) (RegDefn <$ var <*> n) stateGlobalIdents, .. }
+  return $ RegType <$> var <*> n
 
-defineInst :: String -> [Type] -> ParserMonad InstType
+defineInst :: Locatable String -> Locatable [Type] -> ParserMonad (Locatable InstType)
 defineInst var ts = do
   ParserState{..} <- State.get
-  case Map.lookup var stateGlobalIdents of
-    Just (RegDefn _)      -> throwLocalError 2 $ "Instruction " ++ var ++ " has the same name as a previously defined register"
-    Just (InstDefn _)     -> throwLocalError 2 $ "Instruction " ++ var ++ " has the same name as a previously defined instruction"
-    Just  ButtonDefn      -> throwLocalError 2 $ "Instruction " ++ var ++ " has the same name as a previously defined button"
-    Just (MemoryDefn _ _) -> throwLocalError 2 $ "Instruction " ++ var ++ " has the same name as a previously defined memory"
-    Nothing               -> State.put $ ParserState{ stateGlobalIdents = Map.insert var (InstDefn ts) stateGlobalIdents, .. }
-  return $ InstType var ts
+  case Map.lookup (locatableValue var) stateGlobalIdents of
+    Just (Locatable (RegDefn _)      ps) -> throwLocalError var
+      $ "Instruction " ++ locatableValue var ++ " has the same name as a previously defined register, defined at " ++ prettyPosn ps
+    Just (Locatable (InstDefn _)     ps) -> throwLocalError var
+      $ "Instruction " ++ locatableValue var ++ " has the same name as a previously defined instruction, defined at " ++ prettyPosn ps
+    Just (Locatable  ButtonDefn      ps) -> throwLocalError var
+      $ "Instruction " ++ locatableValue var ++ " has the same name as a previously defined button, defined at " ++ prettyPosn ps
+    Just (Locatable (MemoryDefn _ _) ps) -> throwLocalError var
+      $ "Instruction " ++ locatableValue var ++ " has the same name as a previously defined memory, defined at " ++ prettyPosn ps
+    Nothing               -> State.put
+      $ ParserState{ stateGlobalIdents = Map.insert (locatableValue var) (InstDefn <$ var <*> ts) stateGlobalIdents, .. }
+  return $ InstType <$> var <*> ts
 
-defineButton :: String -> Int -> ParserMonad ButtonType
+defineButton :: Locatable String -> Locatable Int -> ParserMonad (Locatable ButtonType)
 defineButton var n = do
   ParserState{..} <- State.get
-  case Map.lookup var stateGlobalIdents of
-    Just (RegDefn _)      -> throwLocalError 2 $ "Button " ++ var ++ " has the same name as a previously defined register"
-    Just (InstDefn _)     -> throwLocalError 2 $ "Button " ++ var ++ " has the same name as a previously defined instruction"
-    Just  ButtonDefn      -> throwLocalError 2 $ "Button " ++ var ++ " has the same name as a previously defined button"
-    Just (MemoryDefn _ _) -> throwLocalError 2 $ "Button " ++ var ++ " has the same name as a previously defined memory"
-    Nothing               -> State.put $ ParserState{ stateGlobalIdents = Map.insert var ButtonDefn stateGlobalIdents, .. }
-  return $ ButtonType var n
+  case Map.lookup (locatableValue var) stateGlobalIdents of
+    Just (Locatable (RegDefn _)      ps) -> throwLocalError var
+      $ "Button " ++ locatableValue var ++ " has the same name as a previously defined register, defined at " ++ prettyPosn ps
+    Just (Locatable (InstDefn _)     ps) -> throwLocalError var
+      $ "Button " ++ locatableValue var ++ " has the same name as a previously defined instruction, defined at " ++ prettyPosn ps
+    Just (Locatable  ButtonDefn      ps) -> throwLocalError var
+      $ "Button " ++ locatableValue var ++ " has the same name as a previously defined button, defined at " ++ prettyPosn ps
+    Just (Locatable (MemoryDefn _ _) ps) -> throwLocalError var
+      $ "Button " ++ locatableValue var ++ " has the same name as a previously defined memory, defined at " ++ prettyPosn ps
+    Nothing               -> State.put
+      $ ParserState{ stateGlobalIdents = Map.insert (locatableValue var) (ButtonDefn <$ var) stateGlobalIdents, .. }
+  return $ ButtonType <$> var <*> n
 
-defineMemory :: String -> Int -> Int -> ParserMonad Memory
+defineMemory :: Locatable String -> Locatable Int -> Locatable Int -> ParserMonad (Locatable Memory)
 defineMemory var dataWidth addressWidth = do
   ParserState{..} <- State.get
-  case Map.lookup var stateGlobalIdents of
-    Just (RegDefn _)      -> throwLocalError 2 $ "Memory " ++ var ++ " has the same name as a previously defined register"
-    Just (InstDefn _)     -> throwLocalError 2 $ "Memory " ++ var ++ " has the same name as a previously defined instruction"
-    Just  ButtonDefn      -> throwLocalError 2 $ "Memory " ++ var ++ " has the same name as a previously defined button"
-    Just (MemoryDefn _ _) -> throwLocalError 2 $ "Memory " ++ var ++ " has the same name as a previously defined memory"
-    Nothing               -> State.put $ ParserState{ stateGlobalIdents = Map.insert var (MemoryDefn dataWidth addressWidth) stateGlobalIdents, .. }
-  return $ Memory var dataWidth addressWidth
+  case Map.lookup (locatableValue var) stateGlobalIdents of
+    Just (Locatable (RegDefn _)      ps) -> throwLocalError var
+      $ "Memory " ++ locatableValue var ++ " has the same name as a previously defined register, defined at " ++ prettyPosn ps
+    Just (Locatable (InstDefn _)     ps) -> throwLocalError var
+      $ "Memory " ++ locatableValue var ++ " has the same name as a previously defined instruction, defined at " ++ prettyPosn ps
+    Just (Locatable  ButtonDefn      ps) -> throwLocalError var
+      $ "Memory " ++ locatableValue var ++ " has the same name as a previously defined button, defined at " ++ prettyPosn ps
+    Just (Locatable (MemoryDefn _ _) ps) -> throwLocalError var
+      $ "Memory " ++ locatableValue var ++ " has the same name as a previously defined memory, defined at " ++ prettyPosn ps
+    Nothing               -> State.put
+      $ ParserState{ stateGlobalIdents = Map.insert (locatableValue var) (MemoryDefn <$ var <*> dataWidth <*> addressWidth) stateGlobalIdents, .. }
+  return $ Memory <$> var <*> dataWidth <*> addressWidth
 
 isLocalVar :: String -> ParserMonad Bool
 isLocalVar var = do
   ParserState{..} <- State.get
   return $ Set.member var stateLocalVars
 
-checkLocalVar :: String -> ParserMonad ()
+checkLocalVar :: Locatable String -> ParserMonad ()
 checkLocalVar var = do
   ParserState{..} <- State.get
-  if Set.member var stateLocalVars
+  if Set.member (locatableValue var) stateLocalVars
   then return ()
-  else case Map.lookup var stateGlobalIdents of
-    Just (RegDefn _)      -> throwLocalError 1 $ var ++ " is a register, expected a local variable"
-    Just (InstDefn _)     -> throwLocalError 1 $ var ++ " is an instruction, expected a local variable"
-    Just  ButtonDefn      -> throwLocalError 1 $ var ++ " is a button, expected a local variable"
-    Just (MemoryDefn _ _) -> throwLocalError 1 $ var ++ " is a memory, expected a local variable"
-    Nothing               -> throwLocalError 1 $ "Variable " ++ var ++ " not defined"
+  else case Map.lookup (locatableValue var) stateGlobalIdents of
+    Just (Locatable (RegDefn _)      ps) ->
+      throwLocalError var $ locatableValue var ++ " is a register as defined at " ++ prettyPosn ps ++ ", expected a local variable"
+    Just (Locatable (InstDefn _)     ps) ->
+      throwLocalError var $ locatableValue var ++ " is an instruction as defined at " ++ prettyPosn ps ++ ", expected a local variable"
+    Just (Locatable  ButtonDefn      ps) ->
+      throwLocalError var $ locatableValue var ++ " is a button as defined at " ++ prettyPosn ps ++ ", expected a local variable"
+    Just (Locatable (MemoryDefn _ _) ps) ->
+      throwLocalError var $ locatableValue var ++ " is a memory as defined at " ++ prettyPosn ps ++ ", expected a local variable"
+    Nothing               ->
+      throwLocalError var $ "Variable " ++ locatableValue var ++ " not defined"
 
-checkRegDefined :: String -> ParserMonad ()
+checkRegDefined :: Locatable String -> ParserMonad ()
 checkRegDefined var = do
   ParserState{..} <- State.get
-  if Set.member var stateLocalVars
-  then throwLocalError 1 $ var ++ " is a local variable, expected a register"
-  else case Map.lookup var stateGlobalIdents of
-    Just (RegDefn _)      -> return ()
-    Just (InstDefn _)     -> throwLocalError 1 $ var ++ " is an instruction, expected a register"
-    Just  ButtonDefn      -> throwLocalError 1 $ var ++ " is a button, expected a register"
-    Just (MemoryDefn _ _) -> throwLocalError 1 $ var ++ " is a memory, expected a register"
-    Nothing               -> throwLocalError 1 $ "Register " ++ var ++ " not defined"
+  if Set.member (locatableValue var) stateLocalVars
+  then throwLocalError var $ locatableValue var ++ " is a local variable, expected a register"
+  else case Map.lookup (locatableValue var) stateGlobalIdents of
+    Just (Locatable (RegDefn _)      _)  -> return ()
+    Just (Locatable (InstDefn _)     ps) ->
+      throwLocalError var $ locatableValue var ++ " is an instruction as defined at " ++ prettyPosn ps ++ ", expected a register"
+    Just (Locatable  ButtonDefn      ps) ->
+      throwLocalError var $ locatableValue var ++ " is a button as defined at " ++ prettyPosn ps ++ ", expected a register"
+    Just (Locatable (MemoryDefn _ _) ps) ->
+      throwLocalError var $ locatableValue var ++ " is a memory as defined at " ++ prettyPosn ps ++ ", expected a register"
+    Nothing               ->
+      throwLocalError var $ "Register " ++ locatableValue var ++ " not defined"
 
-checkInstDefined :: String -> ParserMonad ()
+checkInstDefined :: Locatable String -> ParserMonad ()
 checkInstDefined var = do
   ParserState{..} <- State.get
-  if Set.member var stateLocalVars
-  then throwLocalError 1 $ var ++ " is a local variable, expected an instruction"
-  else case Map.lookup var stateGlobalIdents of
-    Just (RegDefn _)      -> throwLocalError 1 $ var ++ " is a register, expected an instruction"
-    Just (InstDefn _)     -> return ()
-    Just  ButtonDefn      -> throwLocalError 1 $ var ++ " is a button, expected an instruction"
-    Just (MemoryDefn _ _) -> throwLocalError 1 $ var ++ " is a memory, expected an instruction"
-    Nothing               -> throwLocalError 1 $ "Instruction " ++ var ++ " not defined"
+  if Set.member (locatableValue var) stateLocalVars
+  then throwLocalError var $ locatableValue var ++ " is a local variable, expected an instruction"
+  else case Map.lookup (locatableValue var) stateGlobalIdents of
+    Just (Locatable (RegDefn _)      ps) ->
+      throwLocalError var $ locatableValue var ++ " is a register as defined at " ++ prettyPosn ps ++ ", expected an instruction"
+    Just (Locatable (InstDefn _)     _)  -> return ()
+    Just (Locatable  ButtonDefn      ps) ->
+      throwLocalError var $ locatableValue var ++ " is a button as defined at " ++ prettyPosn ps ++ ", expected an instruction"
+    Just (Locatable (MemoryDefn _ _) ps) ->
+      throwLocalError var $ locatableValue var ++ " is a memory as defined at " ++ prettyPosn ps ++ ", expected an instruction"
+    Nothing               ->
+      throwLocalError var $ "Instruction " ++ locatableValue var ++ " not defined"
 
-checkButtonDefined :: String -> ParserMonad ()
+checkButtonDefined :: Locatable String -> ParserMonad ()
 checkButtonDefined var = do
   ParserState{..} <- State.get
-  if Set.member var stateLocalVars
-  then throwLocalError 1 $ var ++ " is a local variable, expected a button"
-  else case Map.lookup var stateGlobalIdents of
-    Just (RegDefn _)      -> throwLocalError 1 $ var ++ " is a register, expected a button"
-    Just (InstDefn _)     -> throwLocalError 1 $ var ++ " is an instruction, expected a button"
-    Just  ButtonDefn      -> return ()
-    Just (MemoryDefn _ _) -> throwLocalError 1 $ var ++ " is a memory, expected a button"
-    Nothing               -> throwLocalError 1 $ "Button " ++ var ++ " not defined"
+  if Set.member (locatableValue var) stateLocalVars
+  then throwLocalError var $ locatableValue var ++ " is a local variable, expected a button"
+  else case Map.lookup (locatableValue var) stateGlobalIdents of
+    Just (Locatable (RegDefn _)      ps) ->
+      throwLocalError var $ locatableValue var ++ " is a register as defined at " ++ prettyPosn ps ++ ", expected a button"
+    Just (Locatable (InstDefn _)     ps) ->
+      throwLocalError var $ locatableValue var ++ " is an instruction as defined at " ++ prettyPosn ps ++ ", expected a button"
+    Just (Locatable  ButtonDefn      _)  -> return ()
+    Just (Locatable (MemoryDefn _ _) ps) ->
+      throwLocalError var $ locatableValue var ++ " is a memory as defined at " ++ prettyPosn ps ++ ", expected a button"
+    Nothing               ->
+      throwLocalError var $ "Button " ++ locatableValue var ++ " not defined"
 
-checkMemoryDefined :: String -> ParserMonad ()
+checkMemoryDefined :: Locatable String -> ParserMonad ()
 checkMemoryDefined var = do
   ParserState{..} <- State.get
-  if Set.member var stateLocalVars
-  then throwLocalError 1 $ var ++ " is a local variable, expected a memory"
-  else case Map.lookup var stateGlobalIdents of
-    Just (RegDefn _)      -> throwLocalError 1 $ var ++ " is a register, expected a memory"
-    Just (InstDefn _)     -> throwLocalError 1 $ var ++ " is an instruction, expected a memory"
-    Just  ButtonDefn      -> throwLocalError 1 $ var ++ " is a button, expected a memory"
-    Just (MemoryDefn _ _) -> return ()
-    Nothing               -> throwLocalError 1 $ "Memory " ++ var ++ " not defined"
+  if Set.member (locatableValue var) stateLocalVars
+  then throwLocalError var $ locatableValue var ++ " is a local variable, expected a memory"
+  else case Map.lookup (locatableValue var) stateGlobalIdents of
+    Just (Locatable (RegDefn _)      ps) ->
+      throwLocalError var $ locatableValue var ++ " is a register as defined at " ++ prettyPosn ps ++ ", expected a memory"
+    Just (Locatable (InstDefn _)     ps) ->
+      throwLocalError var $ locatableValue var ++ " is an instruction as defined at " ++ prettyPosn ps ++ ", expected a memory"
+    Just (Locatable  ButtonDefn      ps) ->
+      throwLocalError var $ locatableValue var ++ " is a button as defined at " ++ prettyPosn ps ++ ", expected a memory"
+    Just (Locatable (MemoryDefn _ _) _)  -> return ()
+    Nothing                              ->
+      throwLocalError var $ "Memory " ++ locatableValue var ++ " not defined"
 
-getIdentifierDefn :: String -> ParserMonad Defn
-getIdentifierDefn var = do
+getIdentifierDefn :: Locatable String -> ParserMonad (Locatable Defn)
+getIdentifierDefn Locatable{..} = do
   ParserState{..} <- State.get
-  case Map.lookup var stateGlobalIdents of
-    Nothing -> throwLocalError 1 $ "Identifier " ++ var ++ " not defined"
+  case Map.lookup locatableValue stateGlobalIdents of
+    Nothing -> throwLocalError Locatable{..} $ "Identifier " ++ locatableValue ++ " not defined"
     Just d  -> return d
 
 clearLocalVars :: ParserMonad ()
@@ -294,68 +336,71 @@ clearLocalVars = do
   ParserState{..} <- State.get
   State.put $ ParserState{ stateLocalVars = Set.empty, .. }
 
-defineEncType :: Type -> Int -> ParserMonad EncType
+defineEncType :: Locatable Type -> Locatable Int -> ParserMonad (Locatable EncType)
 defineEncType t n = do
   ParserState{..} <- State.get
-  when (Map.member t stateEncTypes) . throwLocalError 6 $ "Encoding of type " ++ show t ++ " redefined"
-  State.put $ ParserState{ stateEncTypes = Map.insert t n stateEncTypes, .. }
-  return $ EncType t n
+  when (Map.member (locatableValue t) stateEncTypes) . throwLocalError t $ "Encoding of type " ++ show t ++ " redefined"
+  State.put $ ParserState{ stateEncTypes = Map.insert (locatableValue t) (locatableValue n) stateEncTypes, .. }
+  return $ EncType <$> t <*> n
 
-getEncType :: Type -> ParserMonad Int
-getEncType (BitsT n) = return n
-getEncType (IntT n)  = return n
-getEncType  t        = do
-  ParserState{..} <- State.get
-  case Map.lookup t stateEncTypes of
-    Just n  -> return n
-    Nothing -> throwLocalError 1 $ "Encoding of type " ++ show t ++ " not defined"
+getEncType :: Locatable Type -> ParserMonad Int
+getEncType Locatable{..} = case locatableValue of
+  (BitsT n) -> return n
+  (IntT n)  -> return n
+  t         -> do
+    ParserState{..} <- State.get
+    case Map.lookup t stateEncTypes of
+      Just n  -> return n
+      Nothing -> throwLocalError Locatable{..} $ "Encoding of type " ++ show t ++ " not defined"
 
-instEncDim' :: [Type] -> [String] -> UnsizedBitsExpr -> ParserMonad (Int, [Bit], BitsExpr)
-instEncDim' _  _  (UnsizedConstBitsExpr bs)     = return (length bs, bs, ConstBitsExpr [])
-instEncDim' ts vs (UnsizedEncBitsExpr v)        =
-  case filter ((== v) . fst) $ zip vs ts of
-    []       -> throwLocalError 1 $ "No such variable " ++ v
-    [(_, t)] -> (\n -> (n, [], EncBitsExpr n v)) <$> getEncType t
-    _        -> throwLocalError 1 $ "Two variables with the same name " ++ v
-instEncDim' ts vs (UnsizedConcatBitsExpr e1 e2) = do
-  (n1, bs1, e1') <- instEncDim' ts vs e1
-  (n2, bs2, e2') <- instEncDim' ts vs e2
-  case e1' of
-    ConstBitsExpr [] -> return (n1 + n2, bs1 ++ bs2, e2')
-    _                -> return (n1 + n2, bs1, ConcatBitsExpr e1' (ConcatBitsExpr (ConstBitsExpr bs2) e2'))
-instEncDim' ts vs (UnsizedAndBitsExpr e1 e2)    = do
-  (n1, bs1, e1') <- instEncDim' ts vs e1
-  (n2, bs2, e2') <- instEncDim' ts vs e2
-  unless (n1 == n2) . throwLocalError 1 $ "Mismatched dimensions of bitwise and: Bits " ++ show n1 ++ " and Bits " ++ show n2
-  return (n1, [], AndBitsExpr (ConcatBitsExpr (ConstBitsExpr bs1) e1') (ConcatBitsExpr (ConstBitsExpr bs2) e2'))
-instEncDim' ts vs (UnsizedOrBitsExpr e1 e2)     = do
-  (n1, bs1, e1') <- instEncDim' ts vs e1
-  (n2, bs2, e2') <- instEncDim' ts vs e2
-  unless (n1 == n2) . throwLocalError 1 $ "Mismatched dimensions of bitwise or: Bits " ++ show n1 ++ " and Bits " ++ show n2
-  return (n1, [], OrBitsExpr (ConcatBitsExpr (ConstBitsExpr bs1) e1') (ConcatBitsExpr (ConstBitsExpr bs2) e2'))
-instEncDim' ts vs (UnsizedXorBitsExpr e1 e2)    = do
-  (n1, bs1, e1') <- instEncDim' ts vs e1
-  (n2, bs2, e2') <- instEncDim' ts vs e2
-  unless (n1 == n2) . throwLocalError 1 $ "Mismatched dimensions of bitwise exclusive or: Bits " ++ show n1 ++ " and Bits " ++ show n2
-  return (n1, [], XorBitsExpr (ConcatBitsExpr (ConstBitsExpr bs1) e1') (ConcatBitsExpr (ConstBitsExpr bs2) e2'))
+instEncDim' :: [Type] -> Locatable [String] -> Locatable UnsizedBitsExpr -> ParserMonad (Int, [Bit], BitsExpr)
+instEncDim' ts vs e = case locatableValue e of
+  (UnsizedConstBitsExpr bs)     -> return (length . locatableValue $ bs, locatableValue bs, ConstBitsExpr [])
+  (UnsizedEncBitsExpr v)        ->
+    case filter ((== locatableValue v) . fst) $ zip (locatableValue vs) ts of
+      []       -> throwLocalError v $ "No such variable " ++ locatableValue v
+      [(_, t)] -> (\n -> (n, [], EncBitsExpr n (locatableValue v))) <$> getEncType (pure t)
+      _        -> throwLocalError vs $ "Two variables with the same name " ++ locatableValue v
+  (UnsizedConcatBitsExpr e1 e2) -> do
+    (n1, bs1, e1') <- instEncDim' ts vs e1
+    (n2, bs2, e2') <- instEncDim' ts vs e2
+    case e1' of
+      ConstBitsExpr [] -> return (n1 + n2, bs1 ++ bs2, e2')
+      _                -> return (n1 + n2, bs1, ConcatBitsExpr e1' (ConcatBitsExpr (ConstBitsExpr bs2) e2'))
+  (UnsizedAndBitsExpr e1 e2)    -> do
+    (n1, bs1, e1') <- instEncDim' ts vs e1
+    (n2, bs2, e2') <- instEncDim' ts vs e2
+    unless (n1 == n2) . throwLocalError e $ "Mismatched dimensions of bitwise and: Bits " ++ show n1 ++ " and Bits " ++ show n2
+    return (n1, [], AndBitsExpr (ConcatBitsExpr (ConstBitsExpr bs1) e1') (ConcatBitsExpr (ConstBitsExpr bs2) e2'))
+  (UnsizedOrBitsExpr e1 e2)     -> do
+    (n1, bs1, e1') <- instEncDim' ts vs e1
+    (n2, bs2, e2') <- instEncDim' ts vs e2
+    unless (n1 == n2) . throwLocalError e $ "Mismatched dimensions of bitwise or: Bits " ++ show n1 ++ " and Bits " ++ show n2
+    return (n1, [], OrBitsExpr (ConcatBitsExpr (ConstBitsExpr bs1) e1') (ConcatBitsExpr (ConstBitsExpr bs2) e2'))
+  (UnsizedXorBitsExpr e1 e2)    -> do
+    (n1, bs1, e1') <- instEncDim' ts vs e1
+    (n2, bs2, e2') <- instEncDim' ts vs e2
+    unless (n1 == n2) . throwLocalError e $ "Mismatched dimensions of bitwise exclusive or: Bits " ++ show n1 ++ " and Bits " ++ show n2
+    return (n1, [], XorBitsExpr (ConcatBitsExpr (ConstBitsExpr bs1) e1') (ConcatBitsExpr (ConstBitsExpr bs2) e2'))
 
-instEncDim :: [Type] -> [String] -> UnsizedBitsExpr -> ParserMonad (Int, [Bit], BitsExpr)
+instEncDim :: [Type] -> Locatable [String] -> Locatable UnsizedBitsExpr -> ParserMonad (Locatable Int, Locatable ([Bit], BitsExpr))
 instEncDim ts vs e = do
   (n, bs, e') <- instEncDim' ts vs e
-  when (null bs) $ throwLocalError 1 "Instruction encodings must have a constant prefix"
-  return (n, bs, e')
+  when (null bs) $ throwLocalError e "Instruction encodings must have a constant prefix"
+  return (n <$ e, (bs, e') <$ e)
 
-runParser' :: ParserMonad a -> String -> Either (String, Maybe AlexPosn) a
-runParser' m s = fst <$> runStateT m (ParserState (AlexInput [alexStartPos] alexStartPos '\n' [] s) Set.empty Map.empty Map.empty)
+runParser' :: ParserMonad a -> String -> Either (String, Maybe (AlexPosn, AlexPosn)) a
+runParser' m s = (fst <$>) . runStateT m $ ParserState (AlexInput alexStartPos '\n' [] s) Set.empty Map.empty Map.empty
 
-printErrors :: String -> Either (String, Maybe AlexPosn) a -> Either String a
-printErrors _ (Right a)                          = Right a
-printErrors _ (Left (e, Nothing))                = Left $ e ++ "\n"
-printErrors s (Left (e, Just (AlexPosn a l c) )) = Left $ prettyPos ++ ": " ++ e ++ "\n" ++ line1 ++ line2 ++ "\n" ++ replicate (c - 1) ' ' ++ "^\n"
-  where prettyPos :: String
-        prettyPos = "Line " ++ show l ++ " Column " ++ show c
-        (line1, line2) =  (reverse . takeWhile (/= '\n') . reverse *** takeWhile (/= '\n')) . splitAt a $ s
+printErrors :: String -> Either (String, Maybe (AlexPosn, AlexPosn)) a -> Either String a
+printErrors _ (Right a)           = Right a
+printErrors _ (Left (e, Nothing)) = Left $ e ++ "\n"
+printErrors s (Left (e, Just (AlexPosn a1 l1 c1, AlexPosn a2 l2 c2)))
+  | l1 == l2 = Left $
+      let (line1, line2) =  (reverse . takeWhile (/= '\n') . reverse *** takeWhile (/= '\n')) . splitAt a1 $ s in
+      prettyPosn (Just (AlexPosn a1 l1 c1, AlexPosn a2 l2 c2)) ++ ": " ++ e ++ "\n" ++ line1 ++ line2 ++ "\n" ++ replicate (c1 - 1) ' ' ++ replicate (c2 - c1) '^' ++ "\n"
+  | otherwise = Left $
+      prettyPosn (Just (AlexPosn a1 l1 c1, AlexPosn a2 l2 c2)) ++ ": " ++ e ++ "\nError spanning mulitple lines, I don't yet know how to display that!!!"
 
 runParser :: ParserMonad a -> String -> Either String a
 runParser m s = printErrors s $ runParser' m s
-

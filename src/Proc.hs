@@ -95,7 +95,7 @@ data LValue
 data ImplRule = ImplRule LValue Expr
   deriving Show
 
-data InstRule = InstRule Expr
+newtype InstRule = InstRule Expr
   deriving Show
 
 data Reg = Reg String Int [Bit]
@@ -119,4 +119,3 @@ data Proc = Proc
   , encTypes :: [EncType]
   }
   deriving Show
-

@@ -4,8 +4,10 @@ module Utils
   ( Bit(..)
   , zipBy
   , zip3By
+  , (****)
   ) where
 
+import Control.Arrow ((***))
 import Data.List (sortBy)
 
 import qualified Text.ParserCombinators.ReadPrec as ReadPrec
@@ -93,3 +95,5 @@ zip3By' f g h (x:xs) (y:ys) (z:zs) = case compare3 (f x) (g y) (h z) of
   EQC -> let (xyzs, xys, xzs, yzs, xs', ys', zs') = zip3By' f g h (x:xs) ys zs in (xyzs, xys, xzs, (y,z):yzs, xs', ys', zs')
   EQ3 -> let (xyzs, xys, xzs, yzs, xs', ys', zs') = zip3By' f g h xs ys zs in ((x,y,z):xyzs, xys, xzs, yzs, xs', ys', zs')
 
+(****) :: (a -> b -> c) -> (a' -> b' -> c') -> (a, a') -> (b, b') -> (c, c')
+f **** g = uncurry (***) . (f *** g)
