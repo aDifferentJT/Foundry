@@ -94,7 +94,7 @@ data LValue
 data ImplRule = ImplRule LValue Expr
   deriving Show
 
-data Reg = Reg String Int [Bit]
+data Reg = Reg String Int (Maybe [Bit])
   deriving Show
 
 data Inst = Inst String [Type] ([String], [ImplRule]) ([String], ([Bit], BitsExpr))

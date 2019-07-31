@@ -26,14 +26,6 @@ registers {
 - buffer : Reg 8
 }
 
-<Reg 4> : Bits 1
-<pc> = 0b0
-<accum> = 0b1
-
-<Reg 8> : Bits 1
-<buffer> = 0b0
-<inst> = 0b1
-
 buttons {
 - bufferI0  : Button 0
 - bufferI1  : Button 1

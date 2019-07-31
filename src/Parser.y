@@ -84,9 +84,9 @@ Proc              : RawProc                                      {%
         _   -> throwGlobalError "More than one register block"
       let regEncs = filter (\case RegEnc _ _ -> True; _ -> False) _rawEncs
       regs <- case zipBy (\(RegType n _) -> n) (\(RegEnc n _) -> n) regs' regEncs of
-        (_, (RegType n _):_, _) -> throwGlobalError $ "Register " ++ n ++ " has no encoding"
-        (_, _, (RegEnc n _):_) -> throwGlobalError $ "Encoding given for unknown register " ++ n
-        (xs, [], []) -> return $ [Reg n t e | (RegType n t, RegEnc _ e) <- xs]
+        (_ , xs, _             ) -> return $ [Reg n t (Nothing) | (RegType n t) <- xs]
+        (_ , _ , (RegEnc n _):_) -> throwGlobalError $ "Encoding given for unknown register " ++ n
+        (xs, [], []            ) -> return $ [Reg n t (Just e)  | (RegType n t, RegEnc _ e) <- xs]
       insts' <- case _rawInsts of
                  []  -> throwGlobalError "No instruction block"
                  [x] -> return x
