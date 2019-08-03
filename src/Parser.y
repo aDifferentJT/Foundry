@@ -150,14 +150,34 @@ Type              : regT int                                     { RegT  `fmap` 
                   | intT int                                     { IntT  `fmap` $2 <* $1 }
                   | instT                                        { InstT <$ $1 }
 
-BitsExpr          :: { Locatable UnsizedBitsExpr }
+BitsExpr          :: { Locatable BitsExpr }
 BitsExpr          : '(' BitsExpr ')'                             { $2 }
-                  | bits                                         { pure $ UnsizedConstBitsExpr $1 }
-                  | '<' Var '>'                                  {% checkLocalVar $2 >> return (UnsizedEncBitsExpr $2 <$ $1 <* $3) }
-                  | BitsExpr '++' BitsExpr                       { pure $ UnsizedConcatBitsExpr $1 $3 }
-                  | BitsExpr '&' BitsExpr                        { pure $ UnsizedAndBitsExpr    $1 $3 }
-                  | BitsExpr '|' BitsExpr                        { pure $ UnsizedOrBitsExpr     $1 $3 }
-                  | BitsExpr '^' BitsExpr                        { pure $ UnsizedXorBitsExpr    $1 $3 }
+                  | bits                                         { ConstBitsExpr `fmap` $1 }
+                  | '<' Var '>'                                  {% getLocalVarWidth $2 >>= \w -> return (EncBitsExpr w `fmap` $2 <* $1 <* $3) }
+                  | BitsExpr '++' BitsExpr                       {
+  ConcatBitsExpr ((sizeOfEnc . locatableValue $ $1) + (sizeOfEnc . locatableValue $ $3)) `fmap` $1 <*> $3
+}
+                  | BitsExpr '&' BitsExpr                        {%
+  do
+    let n1 = sizeOfEnc . locatableValue $ $1
+    let n2 = sizeOfEnc . locatableValue $ $3
+    unless (n1 == n2) $ throwLocalError (liftA2 (,) $1 $3) $ "Mismatched dimensions of bitwise and: Bits " ++ show n1 ++ " and Bits " ++ show n2
+    return $ AndBitsExpr (n1 + n2) `fmap` $1 <*> $3
+}
+                  | BitsExpr '|' BitsExpr                        {%
+  do
+    let n1 = sizeOfEnc . locatableValue $ $1
+    let n2 = sizeOfEnc . locatableValue $ $3
+    unless (n1 == n2) $ throwLocalError (liftA2 (,) $1 $3) $ "Mismatched dimensions of bitwise or: Bits " ++ show n1 ++ " and Bits " ++ show n2
+    return $ OrBitsExpr (n1 + n2) `fmap` $1 <*> $3
+}
+                  | BitsExpr '^' BitsExpr                        {%
+  do
+    let n1 = sizeOfEnc . locatableValue $ $1
+    let n2 = sizeOfEnc . locatableValue $ $3
+    unless (n1 == n2) $ throwLocalError (liftA2 (,) $1 $3) $ "Mismatched dimensions of bitwise exclusive or: Bits " ++ show n1 ++ " and Bits " ++ show n2
+    return $ XorBitsExpr (n1 + n2) `fmap` $1 <*> $3
+}
 
 ArgTypeList       :: { Locatable [Type] }
 ArgTypeList       : {- empty -}                                  { pure [] }
@@ -193,33 +213,52 @@ MemoryTypes       : memory '{' List(MemoryType) '}'              { $3 }
 EncType           :: { Locatable EncType }
 EncType           : '<' Type '>' ':' bitsT int                   {% fmap (<* $1) $ defineEncType $2 $6 }
 
-Arg               :: { Locatable String }
-Arg               : '<' Var '>'                                  {% fmap ((<* $1) . (<* $3)) $ defineLocalVar $2}
+ArgList           :: { Locatable [Locatable String] }
+ArgList           : {- empty -}                                  { pure [] }
+ArgList           : ArgList '<' Var '>'                          { ($3:) `fmap` $1 <* $4 }
+
+VarWithArgs       :: { (Locatable String, Locatable Defn, Locatable [String]) }
+VarWithArgs       : Var ArgList                                  {%
+  do
+    defn <- getIdentifierDefn $1
+    case locatableValue defn of
+      RegDefn n      -> do
+        unless (null . locatableValue $ $2) . throwLocalError $2 $ "Register " ++ locatableValue $1 ++ " has arguments"
+        return ($1, defn, pure [])
+      InstDefn ts    -> do
+        unless (length ts == (length . locatableValue $ $2)) . throwLocalError $2 $ "Instruction " ++ locatableValue $1 ++ " has " ++ show (length . locatableValue $ $2) ++ " arguments, expected " ++ show (length ts)
+        vs <- fmap sequenceA . sequence . map (uncurry defineLocalVar) . flip zip ts . reverse . locatableValue $ $2
+        return ($1, defn, vs)
+      ButtonDefn     -> do
+        unless (null . locatableValue $ $2) . throwLocalError $2 $ "Button " ++ locatableValue $1 ++ " has arguments"
+        return ($1, defn, pure [])
+      MemoryDefn _ _ -> do
+        unless (null . locatableValue $ $2) . throwLocalError $2 $ "Memory " ++ locatableValue $1 ++ " has arguments"
+        return ($1, defn, pure [])
+}
 
 Enc               :: { Locatable Enc }
-Enc               : '<' Var List(Arg) '>' '=' BitsExpr           {% fmap (<* $1) $
+Enc               : '<' VarWithArgs '>' '=' BitsExpr             {% fmap (<* $1) $
   do
     clearLocalVars
-    defn <- getIdentifierDefn $2
+    let (var, defn, args) = $2
     case defn of
       Locatable (RegDefn n)     ps -> do
-        unless (null . locatableValue $ $3) . throwLocalError $3 $ "Encoding for register " ++ locatableValue $2 ++ " has arguments"
-        case locatableValue $6 of
-          UnsizedConstBitsExpr bs -> do
+        case locatableValue $5 of
+          ConstBitsExpr bs -> do
             d1 <- getEncType $ Locatable (RegT n) ps
-            let d2 = length . locatableValue $ bs
-            unless (d1 == d2) . throwLocalError $6 $ "<" ++ locatableValue $2 ++ "> is of type Bits " ++ show d2 ++ " but I expected Bits " ++ show d1
-            return $ RegEnc `fmap` $2 <*> bs
-          _                       -> throwLocalError $6 $ "Encoding for register " ++ locatableValue $2 ++ " is not constant"
+            let d2 = length bs
+            unless (d1 == d2) . throwLocalError $5 $ "<" ++ locatableValue var ++ "> is of type Bits " ++ show d2 ++ " but I expected Bits " ++ show d1
+            return $ RegEnc `fmap` var <*> pure bs <* $1 <* $5
+          _                -> throwLocalError $5 $ "Encoding for register " ++ locatableValue var ++ " is not constant"
       Locatable (InstDefn ts)   ps -> do
-        let vs = fmap reverse $3
-        unless (length ts == (length . locatableValue $ vs)) . throwLocalError vs $ "Instruction " ++ locatableValue $2 ++ " has " ++ show (length . locatableValue $ vs) ++ " arguments, expected " ++ show (length ts)
         d1 <- getEncType $ Locatable InstT ps
-        (d2, e) <- instEncDim ts vs $6
-        unless (d1 == locatableValue d2) . throwLocalError vs $ "<" ++ intercalate " " (locatableValue $2 : ["<" ++ v ++ ">" | v <- locatableValue vs]) ++ "> is of type Bits " ++ (show . locatableValue $ d2) ++ " but I expected Bits " ++ show d1
-        return $ InstEnc `fmap` $2 <*> vs <*> e
-      Locatable  ButtonDefn      _ -> throwLocalError $2 $ "Encoding given for button " ++ locatableValue $2
-      Locatable (MemoryDefn _ _) _ -> throwLocalError $2 $ "Encoding given for memory " ++ locatableValue $2
+        let d2 = sizeOfEnc . locatableValue $ $5
+        e <- encPrefix $5
+        unless (d1 == d2) . throwLocalError $5 $ "<" ++ intercalate " " (locatableValue var : ["<" ++ v ++ ">" | v <- locatableValue args]) ++ "> is of type Bits " ++ show d2 ++ " but I expected Bits " ++ show d1
+        return $ InstEnc `fmap` var <*> args <*> e <* $1
+      Locatable  ButtonDefn      _ -> throwLocalError var $ "Encoding given for button " ++ locatableValue var
+      Locatable (MemoryDefn _ _) _ -> throwLocalError var $ "Encoding given for memory " ++ locatableValue var
 }
 
 BoolExpr          :: { Locatable BoolExpr }
@@ -272,19 +311,17 @@ ImplRule          : Var '<-' Expr                                {%
                   | Var '[' Expr ']' '<-' Expr                   {% checkMemoryDefined $1 >> return (ImplRule `fmap` (MemAccessLValue `fmap` $1 <*> $3) <*> $6) }
 
 Impl              :: { Locatable Impl }
-Impl              : Var List(Arg) '{' List(ImplRule) '}'         {% fmap (<* $5) $
+Impl              : VarWithArgs '{' List(ImplRule) '}'           {% fmap (<* $4) $
   do
     clearLocalVars
-    defn <- getIdentifierDefn $1
+    let (var, defn, args) = $1
     case locatableValue defn of
-      (RegDefn _)      -> throwLocalError $1 $ "Implementation given for register " ++ locatableValue $1
+      (RegDefn _)      -> throwLocalError var $ "Implementation given for register " ++ locatableValue var
       (InstDefn ts)    -> do
-        unless (length ts == (length . locatableValue $ $2)) . throwLocalError $2 $ "Instruction " ++ locatableValue $1 ++ " has " ++ show (length . locatableValue $ $2) ++ " arguments, expected " ++ show (length ts)
-        return (InstImpl `fmap` $1 <*> (reverse `fmap` $2) <*> $4)
+        return (InstImpl `fmap` var <*> args <*> $3)
       ButtonDefn       -> do
-        unless (null . locatableValue $ $2) . throwLocalError $2 $ "Encoding for button " ++ locatableValue $1 ++ " has arguments"
-        return (ButtonImpl `fmap` $1 <*> $4)
-      (MemoryDefn _ _) -> throwLocalError $1 $ "Implementation given for memory " ++ locatableValue $1
+        return (ButtonImpl `fmap` var <*> $3)
+      (MemoryDefn _ _) -> throwLocalError var $ "Implementation given for memory " ++ locatableValue var
 }
 
 {

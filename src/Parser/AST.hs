@@ -15,7 +15,6 @@ module Parser.AST
   , RegType(..)
   , InstType(..)
   , ButtonType(..)
-  , UnsizedBitsExpr(..)
   , Enc(..)
   , Impl(..)
   , RawProc(
@@ -57,16 +56,6 @@ data InstType = InstType String [Type]
 
 -- | A declaration of the physical index of a button
 data ButtonType = ButtonType String Int
-  deriving Show
-
--- | An expression for some bits but without sizes for variables - THIS IS UNNEEDED AND WILL BE REMOVED SHORTLY
-data UnsizedBitsExpr
-  = UnsizedConstBitsExpr (Locatable [Bit])
-  | UnsizedEncBitsExpr (Locatable String)
-  | UnsizedConcatBitsExpr (Locatable UnsizedBitsExpr) (Locatable UnsizedBitsExpr)
-  | UnsizedAndBitsExpr (Locatable UnsizedBitsExpr) (Locatable UnsizedBitsExpr)
-  | UnsizedOrBitsExpr (Locatable UnsizedBitsExpr) (Locatable UnsizedBitsExpr)
-  | UnsizedXorBitsExpr (Locatable UnsizedBitsExpr) (Locatable UnsizedBitsExpr)
   deriving Show
 
 -- | A definition of an encoding of a register or an instruction

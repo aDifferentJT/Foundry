@@ -42,22 +42,22 @@ data EncType = EncType Type Int
 
 -- | An expression for some bits
 data BitsExpr
-  = ConstBitsExpr [Bit]              -- ^ A constant array of bits
-  | EncBitsExpr Int String           -- ^ The encoding of a variable with given width and identifier
-  | ConcatBitsExpr BitsExpr BitsExpr -- ^ Two expressions of bits concatenated
-  | AndBitsExpr BitsExpr BitsExpr    -- ^ Two expressions of bits combined with a bitwise and operation
-  | OrBitsExpr BitsExpr BitsExpr     -- ^ Two expressions of bits combined with a bitwise or operation
-  | XorBitsExpr BitsExpr BitsExpr    -- ^ Two expressions of bits combined with a bitwise exclusive or operation
+  = ConstBitsExpr [Bit]                  -- ^ A constant array of bits
+  | EncBitsExpr Int String               -- ^ The encoding of a variable with given width and identifier
+  | ConcatBitsExpr Int BitsExpr BitsExpr -- ^ Two expressions of bits concatenated with the width
+  | AndBitsExpr Int BitsExpr BitsExpr    -- ^ Two expressions of bits combined with a bitwise and operation with the width
+  | OrBitsExpr Int BitsExpr BitsExpr     -- ^ Two expressions of bits combined with a bitwise or operation with the width
+  | XorBitsExpr Int BitsExpr BitsExpr    -- ^ Two expressions of bits combined with a bitwise exclusive or operation with the width
   deriving Show
 
 -- | Calculate the width of an expression of bits
 sizeOfEnc :: BitsExpr -> Int
-sizeOfEnc (ConstBitsExpr bs)     = length bs
-sizeOfEnc (EncBitsExpr n _)      = n
-sizeOfEnc (ConcatBitsExpr e1 e2) = sizeOfEnc e1 + sizeOfEnc e2
-sizeOfEnc (AndBitsExpr    e1 _)  = sizeOfEnc e1
-sizeOfEnc (OrBitsExpr     e1 _)  = sizeOfEnc e1
-sizeOfEnc (XorBitsExpr    e1 _)  = sizeOfEnc e1
+sizeOfEnc (ConstBitsExpr  bs)    = length bs
+sizeOfEnc (EncBitsExpr    n _)   = n
+sizeOfEnc (ConcatBitsExpr n _ _) = n
+sizeOfEnc (AndBitsExpr    n _ _) = n
+sizeOfEnc (OrBitsExpr     n _ _) = n
+sizeOfEnc (XorBitsExpr    n _ _) = n
 
 -- | Return the range of bits representing a given variable in the expression 
 findVarInEnc :: String           -- ^ The identifier of the variable
@@ -68,13 +68,13 @@ findVarInEnc _   _   (ConstBitsExpr _) = Nothing
 findVarInEnc var off (EncBitsExpr n var')
   | var == var' = Just (off, off + n - 1)
   | otherwise   = Nothing
-findVarInEnc var off (ConcatBitsExpr e1 e2) =
+findVarInEnc var off (ConcatBitsExpr _ e1 e2) =
   case findVarInEnc var off e1 of
     Just res -> Just res
     Nothing  -> findVarInEnc var (off + sizeOfEnc e1) e2
-findVarInEnc _   _   (AndBitsExpr _ _) = Nothing
-findVarInEnc _   _   (OrBitsExpr  _ _) = Nothing
-findVarInEnc _   _   (XorBitsExpr _ _) = Nothing
+findVarInEnc _   _   (AndBitsExpr _ _ _) = Nothing
+findVarInEnc _   _   (OrBitsExpr  _ _ _) = Nothing
+findVarInEnc _   _   (XorBitsExpr _ _ _) = Nothing
 
 -- | A binary operation
 data Op          
