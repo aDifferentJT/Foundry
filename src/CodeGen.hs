@@ -1,5 +1,13 @@
 {-# LANGUAGE RecordWildCards #-}
 
+{-|
+Module      : CodeGen
+Description : The code generation module
+Copyright   : (c) Jonathan Tanner, 2019
+Licence     : GPL-3
+Maintainer  : jonathan.tanner@sjc.ox.ac.uk
+Stability   : experimental
+-}
 module CodeGen
   ( genCode
   ) where
@@ -416,5 +424,6 @@ genProcModule = combineBlocks
   , endModule
   ]
 
+-- | Generate the verilog code for the given processor
 genCode :: Proc -> String
 genCode = (++ "\n\n") . combineBlocks [genPreamble, genProcModule]

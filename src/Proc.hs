@@ -1,3 +1,13 @@
+{-|
+Module      : Proc
+Description : The data structure representing a processor
+Copyright   : (c) Jonathan Tanner, 2019
+Licence     : GPL-3
+Maintainer  : jonathan.tanner@sjc.ox.ac.uk
+Stability   : experimental
+
+This is the data structure representing a processor to be passed between modules
+-}
 module Proc
   ( Type(..)
   , EncType(..)
@@ -5,8 +15,8 @@ module Proc
   , sizeOfEnc
   , findVarInEnc
   , Op(..)
-  , Expr(..)
   , BoolExpr(..)
+  , Expr(..)
   , LValue(..)
   , ImplRule(..)
   , Reg(..)
@@ -18,25 +28,29 @@ module Proc
 
 import Utils (Bit)
 
+-- | The types supported by the type system
 data Type
-  = RegT Int
-  | BitsT Int
-  | IntT Int
-  | InstT
+  = RegT Int  -- ^ A register of a given width
+  | BitsT Int -- ^ A given number of bits
+  | IntT Int  -- ^ An integer of a given number of bits
+  | InstT     -- ^ An instruction
   deriving (Eq, Ord, Show)
 
+-- | The width of the encoding of a given type
 data EncType = EncType Type Int
   deriving Show
 
+-- | An expression for some bits
 data BitsExpr
-  = ConstBitsExpr [Bit]
-  | EncBitsExpr Int String
-  | ConcatBitsExpr BitsExpr BitsExpr
-  | AndBitsExpr BitsExpr BitsExpr
-  | OrBitsExpr BitsExpr BitsExpr
-  | XorBitsExpr BitsExpr BitsExpr
+  = ConstBitsExpr [Bit]              -- ^ A constant array of bits
+  | EncBitsExpr Int String           -- ^ The encoding of a variable with given width and identifier
+  | ConcatBitsExpr BitsExpr BitsExpr -- ^ Two expressions of bits concatenated
+  | AndBitsExpr BitsExpr BitsExpr    -- ^ Two expressions of bits combined with a bitwise and operation
+  | OrBitsExpr BitsExpr BitsExpr     -- ^ Two expressions of bits combined with a bitwise or operation
+  | XorBitsExpr BitsExpr BitsExpr    -- ^ Two expressions of bits combined with a bitwise exclusive or operation
   deriving Show
 
+-- | Calculate the width of an expression of bits
 sizeOfEnc :: BitsExpr -> Int
 sizeOfEnc (ConstBitsExpr bs)     = length bs
 sizeOfEnc (EncBitsExpr n _)      = n
@@ -45,7 +59,11 @@ sizeOfEnc (AndBitsExpr    e1 _)  = sizeOfEnc e1
 sizeOfEnc (OrBitsExpr     e1 _)  = sizeOfEnc e1
 sizeOfEnc (XorBitsExpr    e1 _)  = sizeOfEnc e1
 
-findVarInEnc :: String -> Int -> BitsExpr -> Maybe (Int, Int)
+-- | Return the range of bits representing a given variable in the expression 
+findVarInEnc :: String           -- ^ The identifier of the variable
+             -> Int              -- ^ The starting index in the expression
+             -> BitsExpr         -- ^ The expression
+             -> Maybe (Int, Int) -- ^ The range of bits (inclusive) representing @var@
 findVarInEnc _   _   (ConstBitsExpr _) = Nothing
 findVarInEnc var off (EncBitsExpr n var')
   | var == var' = Just (off, off + n - 1)
@@ -58,60 +76,70 @@ findVarInEnc _   _   (AndBitsExpr _ _) = Nothing
 findVarInEnc _   _   (OrBitsExpr  _ _) = Nothing
 findVarInEnc _   _   (XorBitsExpr _ _) = Nothing
 
-data Op
-  = Add
-  | Sub
-  | Mul
-  | Div
-  | ConcatBits
-  | BitwiseAnd
-  | BitwiseOr
-  | BitwiseXor
+-- | A binary operation
+data Op          
+  = Add        -- ^ Addition
+  | Sub        -- ^ Subtraction
+  | Mul        -- ^ Multiplication
+  | Div        -- ^ Division
+  | ConcatBits -- ^ Concatenate the bits
+  | BitwiseAnd -- ^ Bitwise and
+  | BitwiseOr  -- ^ Bitwise or
+  | BitwiseXor -- ^ Bitwise exclusive or
   deriving Show
 
+-- | An expression for a boolean
 data BoolExpr
-  = EqualityExpr Expr Expr
-  | LogicalAndExpr BoolExpr BoolExpr
-  | LogicalOrExpr BoolExpr BoolExpr
+  = EqualityExpr Expr Expr           -- ^ Equality check
+  | LogicalAndExpr BoolExpr BoolExpr -- ^ Logical and
+  | LogicalOrExpr BoolExpr BoolExpr  -- ^ Logical or
   deriving Show
 
+-- | An expression
 data Expr
-  = VarExpr String
-  | RegExpr String
-  | MemAccessExpr String Expr
-  | ConstExpr Int
-  | BinaryConstExpr [Bit]
-  | OpExpr Op Expr Expr
-  | TernaryExpr BoolExpr Expr Expr
+  = VarExpr String                 -- ^ An expression representing a variable
+  | RegExpr String                 -- ^ An expression representing the value in a register
+  | MemAccessExpr String Expr      -- ^ An access into memory
+  | ConstExpr Int                  -- ^ A constant
+  | BinaryConstExpr [Bit]          -- ^ A binary constant (some bits)
+  | OpExpr Op Expr Expr            -- ^ A binary operation
+  | TernaryExpr BoolExpr Expr Expr -- ^ A C-style ternary expression
   deriving Show
 
+-- | An expression into which we can assign a value
 data LValue
-  = VarLValue String
-  | RegLValue String
-  | MemAccessLValue String Expr
+  = VarLValue String            -- ^ An expression representing a variable, this should be a register variable
+  | RegLValue String            -- ^ An expression representing a register
+  | MemAccessLValue String Expr -- ^ An expression representing a memory location
   deriving Show
 
+-- | A rule for assigning a new value to an lvalue
 data ImplRule = ImplRule LValue Expr
   deriving Show
 
+-- | A register definition, with identifier, width and possibly an encoding
 data Reg = Reg String Int (Maybe [Bit])
   deriving Show
 
+-- | An instruction definition, with identifier, argument types, implementation rules and an encoding
 data Inst = Inst String [Type] ([String], [ImplRule]) ([String], ([Bit], BitsExpr))
   deriving Show
 
+-- | A button definition, with identifier, physical index and implementation rules
 data Button = Button String Int [ImplRule]
   deriving Show
 
-data Memory = Memory String Int Int -- name, data width, address width
+-- | A memory definition, with identifier, data width and address width
+data Memory = Memory String Int Int
   deriving Show
 
+-- | A processor definition
 data Proc = Proc
-  { regs     :: [Reg]
-  , insts    :: [Inst]
-  , buttons  :: [Button]
-  , memorys  :: [Memory]
-  , always   :: [ImplRule]
-  , encTypes :: [EncType]
+  { regs     :: [Reg]      -- ^ Register definitions
+  , insts    :: [Inst]     -- ^ Instruction definitions
+  , buttons  :: [Button]   -- ^ Button definitions
+  , memorys  :: [Memory]   -- ^ Memory definitions
+  , always   :: [ImplRule] -- ^ Various implementation rules that occur on every clock tick
+  , encTypes :: [EncType]  -- ^ The widths of the encodings of various types
   }
   deriving Show

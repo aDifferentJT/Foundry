@@ -2,6 +2,14 @@
 {-# OPTIONS_GHC -w #-}
 {-# LANGUAGE RecordWildCards #-}
 
+{-|
+Module      : Parser.Lexer
+Description : The lexer
+Copyright   : (c) Jonathan Tanner, 2019
+Licence     : GPL-3
+Maintainer  : jonathan.tanner@sjc.ox.ac.uk
+Stability   : experimental
+-}
 module Parser.Lexer
   ( Token(..)
   , readToken
@@ -63,44 +71,45 @@ tokens :-
   $upper [$alpha $digit \_]*  { \str ps -> throwLocalErrorAt ps ("Unrecognised type name: " ++ str) }
 
 {
+-- | The tokens to lex
 data Token
-  = Registers
-  | Instructions
-  | Buttons
-  | MemoryTok
-  | Colon
-  | Hyphen
-  | Equals
-  | Plus
-  | Times
-  | Slash
-  | And
-  | Or
-  | Xor
-  | Concat
-  | Equality
-  | LogicalAnd
-  | LogicalOr
-  | Question
-  | LeftArrow
-  | OpenAngle
-  | CloseAngle
-  | OpenCurly
-  | CloseCurly
-  | OpenParen
-  | CloseParen
-  | OpenSquare
-  | CloseSquare
-  | Bits (Locatable [Bit])
-  | Int (Locatable Int)
-  | VarTok (Locatable String)
-  | RegTok
-  | BitsTok
-  | IntTok
-  | InstTok
-  | ButtonTok
-  | RAMTok
-  | EOF
+  = Registers                 -- ^ @registers@
+  | Instructions              -- ^ @instructions@
+  | Buttons                   -- ^ @buttons@
+  | MemoryTok                 -- ^ @memory@
+  | Colon                     -- ^ @:@
+  | Hyphen                    -- ^ @-@
+  | Equals                    -- ^ @=@
+  | Plus                      -- ^ @+@
+  | Times                     -- ^ @*@
+  | Slash                     -- ^ @/@
+  | And                       -- ^ @&@
+  | Or                        -- ^ @|@
+  | Xor                       -- ^ @^@
+  | Concat                    -- ^ @++@
+  | Equality                  -- ^ @==@
+  | LogicalAnd                -- ^ @&&@
+  | LogicalOr                 -- ^ @||@
+  | Question                  -- ^ @?@
+  | LeftArrow                 -- ^ @<-@
+  | OpenAngle                 -- ^ @<@
+  | CloseAngle                -- ^ @>@
+  | OpenCurly                 -- ^ @{@
+  | CloseCurly                -- ^ @}@
+  | OpenParen                 -- ^ @(@
+  | CloseParen                -- ^ @)@
+  | OpenSquare                -- ^ @[@
+  | CloseSquare               -- ^ @]@
+  | Bits (Locatable [Bit])    -- ^ A binary literal
+  | Int (Locatable Int)       -- ^ An integer
+  | VarTok (Locatable String) -- ^ An identifier starting with a lower case letter
+  | RegTok                    -- ^ @Reg@
+  | BitsTok                   -- ^ @Bits@
+  | IntTok                    -- ^ @Int@
+  | InstTok                   -- ^ @Inst@
+  | ButtonTok                 -- ^ @Button@
+  | RAMTok                    -- ^ @RAM@
+  | EOF                       -- ^ The end of the file
   deriving (Show)
 
 wrapFuncToken :: (Locatable b -> a) -> b -> (AlexPosn, AlexPosn) -> ParserMonad (Locatable a)
@@ -109,6 +118,7 @@ wrapFuncToken f s ps = return $ Locatable (f . Locatable s . Just $ ps) (Just ps
 wrapPlainToken :: a -> b -> (AlexPosn, AlexPosn) -> ParserMonad (Locatable a)
 wrapPlainToken = wrapFuncToken . const
 
+-- | Read a `Token' from the input
 readToken :: ParserMonad (Locatable Token)
 readToken = do
   ParserState{..} <- State.get

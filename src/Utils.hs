@@ -1,5 +1,15 @@
 {-# LANGUAGE LambdaCase #-}
 
+{-|
+Module      : Utils
+Description : Random utility functions
+Copyright   : (c) Jonathan Tanner, 2019
+Licence     : GPL-3
+Maintainer  : jonathan.tanner@sjc.ox.ac.uk
+Stability   : experimental
+
+A few random utility functions, if there were enough of these I would consider splitting it into different modules and possibly a separate package.
+-}
 module Utils
   ( Bit(..)
   , zipBy
@@ -13,7 +23,10 @@ import Data.List (sortBy)
 import qualified Text.ParserCombinators.ReadPrec as ReadPrec
 import Text.Read (readPrec)
 
-data Bit = Zero | One
+-- | A single bit
+data Bit
+  = Zero -- ^ A 0 bit
+  | One  -- ^ A 1 bit
   deriving Eq
 
 instance Show Bit where
@@ -26,10 +39,17 @@ instance Read Bit where
     '1' -> return One
     _   -> ReadPrec.pfail
 
+-- | Sort the list by running the function
+-- note that this doesn't cache the function so it should be cheap
 sortWith :: Ord b => (a -> b) -> [a] -> [a]
 sortWith f = sortBy (\x y -> compare (f x) (f y))
 
-zipBy :: Ord c => (a -> c) -> (b -> c) -> [a] -> [b] -> ([(a, b)], [a], [b])
+-- | Use the given functions to group elements from two lists
+zipBy :: Ord c => (a -> c)             -- ^ The function on xs
+               -> (b -> c)             -- ^ The function on ys
+               -> [a]                  -- ^ The list of xs
+               -> [b]                  -- ^ The list of ys
+               -> ([(a, b)], [a], [b]) -- ^ Return a tuple of the list of matching pairs that are: in both xs and ys, only in xs and only in ys
 zipBy f g xs ys = zipBy' f g (sortWith f xs) (sortWith g ys)
 
 zipBy' :: Ord c => (a -> c) -> (b -> c) -> [a] -> [b] -> ([(a, b)], [a], [b])
@@ -40,7 +60,15 @@ zipBy' f g (x:xs) (y:ys) = case compare (f x) (g y) of
   LT -> let (xys, xs', ys') = zipBy' f g xs (y:ys) in (xys, x:xs', ys')
   GT -> let (xys, xs', ys') = zipBy' f g (x:xs) ys in (xys, xs', y:ys')
 
-zip3By :: Ord d => (a -> d) -> (b -> d) -> (c -> d) -> [a] -> [b] -> [c] -> ([(a, b, c)], [(a, b)], [(a, c)], [(b, c)], [a], [b], [c])
+-- | Use the given functions to group elements from three lists
+zip3By :: Ord d => (a -> d) -- ^ The function on xs
+                -> (b -> d) -- ^ The function on ys
+                -> (c -> d) -- ^ The function on zs
+                -> [a]      -- ^ The list of xs
+                -> [b]      -- ^ The list of ys
+                -> [c]      -- ^ The list of zs
+                            -- | Return a tuple of the list of matching pairs that are in: xs, ys and zs; xs and ys; xs and zs; ys and zs; xs; ys; and zs
+                -> ([(a, b, c)], [(a, b)], [(a, c)], [(b, c)], [a], [b], [c])
 zip3By f g h xs ys zs = zip3By' f g h (sortWith f xs) (sortWith g ys) (sortWith h zs)
 
 data Ordering3
@@ -95,5 +123,10 @@ zip3By' f g h (x:xs) (y:ys) (z:zs) = case compare3 (f x) (g y) (h z) of
   EQC -> let (xyzs, xys, xzs, yzs, xs', ys', zs') = zip3By' f g h (x:xs) ys zs in (xyzs, xys, xzs, (y,z):yzs, xs', ys', zs')
   EQ3 -> let (xyzs, xys, xzs, yzs, xs', ys', zs') = zip3By' f g h xs ys zs in ((x,y,z):xyzs, xys, xzs, yzs, xs', ys', zs')
 
-(****) :: (a -> b -> c) -> (a' -> b' -> c') -> (a, a') -> (b, b') -> (c, c')
+-- | Combine two binary functions to give a binary function on pairs
+(****) :: (a -> b -> c)    -- ^ A function \(f\)
+       -> (a' -> b' -> c') -- ^ A function \(g\)
+       -> (a, a')          -- ^ Values \((x_1, y_1)\)
+       -> (b, b')          -- ^ Values \((x_2, y_2)\)
+       -> (c, c')          -- ^ \((f(x_1, x_2), g(x_1, x_2))\)
 f **** g = uncurry (***) . (f *** g)

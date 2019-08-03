@@ -1,6 +1,14 @@
 {
 {-# LANGUAGE RecordWildCards, LambdaCase #-}
 
+{-|
+Module      : Parser
+Description : The parser
+Copyright   : (c) Jonathan Tanner, 2019
+Licence     : GPL-3
+Maintainer  : jonathan.tanner@sjc.ox.ac.uk
+Stability   : experimental
+-}
 module Parser (parse, parseFile) where
 
 import Proc
@@ -283,9 +291,11 @@ Impl              : Var List(Arg) '{' List(ImplRule) '}'         {% fmap (<* $5)
 parseError :: Locatable Token -> ParserMonad a
 parseError = flip throwLocalError "Parse Error"
 
+-- | Parse the given string and return either a nicely formatted error or a `Proc'
 parse :: String -> Either String Proc
 parse = fmap locatableValue . runParser parseM
 
+-- | Parse the given file and return either a nicely formatted error or a `Proc'
 parseFile :: FilePath -> ExceptT String IO Proc
 parseFile = ExceptT . fmap parse . readFile
 }

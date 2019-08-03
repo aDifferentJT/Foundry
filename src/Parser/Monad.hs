@@ -1,5 +1,15 @@
 {-# LANGUAGE MultiParamTypeClasses, FlexibleInstances, FlexibleContexts, TupleSections, RecordWildCards #-}
 
+{-|
+Module      : Parser.Monad
+Description : The monad threaded through the parser
+Copyright   : (c) Jonathan Tanner, 2019
+Licence     : GPL-3
+Maintainer  : jonathan.tanner@sjc.ox.ac.uk
+Stability   : experimental
+
+This is the monad that is threaded through the lexer and the parser
+-}
 module Parser.Monad
   ( alexMove
   , AlexInput(AlexInput, charPos, charPrev, pending, str)
@@ -101,33 +111,38 @@ utf8Encode = (fromIntegral *** map fromIntegral) . go . ord
                                 ]
                               )
 
-type Byte = Word8
-
+-- | The starting position
 alexStartPos :: AlexPosn
 alexStartPos = AlexPosn 0 1 1
 
+-- | The width of a tab - used for column numbers
 alexTabSize :: Int
 alexTabSize = 8
 
+-- | Advance the position by the given character
 alexMove :: AlexPosn -> Char -> AlexPosn
 alexMove (AlexPosn a l c) '\t' = AlexPosn (a + 1)  l       (c + alexTabSize - ((c - 1) `mod` alexTabSize))
 alexMove (AlexPosn a l _) '\n' = AlexPosn (a + 1) (l + 1)   1
 alexMove (AlexPosn a l c) _    = AlexPosn (a + 1)  l       (c + 1)
 
+-- | The current input to the lexer
 data AlexInput = AlexInput
-  { charPos  :: AlexPosn    -- position of the char
-  , charPrev :: Char        -- previous char
-  , pending  :: [Byte]      -- pending bytes on current char
-  , str      :: String      -- current input string
+  { charPos  :: AlexPosn -- ^ The position of the character
+  , charPrev :: Char     -- ^ The previous character
+  , pending  :: [Word8]  -- ^ The pending bytes on the current character
+  , str      :: String   -- ^ The current input string
   }
 
+-- | Ignore any remaining bytes in the current character
 ignorePendingBytes :: AlexInput -> AlexInput
 ignorePendingBytes input = input { pending = [] }
 
+-- | Return the previously read character
 alexInputPrevChar :: AlexInput -> Char
 alexInputPrevChar = charPrev
 
-alexGetByte :: AlexInput -> Maybe (Byte,AlexInput)
+-- | Get another byte from the input
+alexGetByte :: AlexInput -> Maybe (Word8, AlexInput)
 alexGetByte AlexInput{..} = case (pending, str) of
   (b:bs, _  ) -> Just (b,AlexInput{ pending = bs, .. })
   ([],   [] ) -> Nothing
@@ -136,44 +151,54 @@ alexGetByte AlexInput{..} = case (pending, str) of
     let (b, bs) = utf8Encode c in
     p `seq`  Just (b, AlexInput p c bs s)
 
+-- | A definition
 data Defn
   = RegDefn Int
   | InstDefn [Type]
   | ButtonDefn
   | MemoryDefn Int Int
 
+-- | The current state to be threaded through the parser in the monad
 data ParserState = ParserState
-  { stateInput        :: AlexInput
-  , stateLocalVars    :: Set.Set String
-  , stateGlobalIdents :: Map.Map String (Locatable Defn)
-  , stateEncTypes     :: Map.Map Type Int
+  { stateInput        :: AlexInput                       -- ^ The input to be read
+  , stateLocalVars    :: Set.Set String                  -- ^ The currently in scope local variables
+  , stateGlobalIdents :: Map.Map String (Locatable Defn) -- ^ The global variables that have been defined so far
+  , stateEncTypes     :: Map.Map Type Int                -- ^ The encoding types that have so far been defined
   }
 
+-- | Identifiers that should be predefined
 initialIdents :: Map.Map String (Locatable Defn)
 initialIdents = Map.fromList
   [ ("always", pure $ InstDefn [])
   ]
 
+-- | The state to be threaded into the beginning of the parser
 initialParserState :: String -> ParserState
 initialParserState s = ParserState (AlexInput alexStartPos '\n' [] s) Set.empty initialIdents Map.empty
 
+-- | The monad to be threaded through the lexer and the parser
 type ParserMonad a = StateT ParserState (Either (String, Maybe (AlexPosn, AlexPosn))) a
 
+-- | Print a position in a nice way
 prettyPosn :: Maybe (AlexPosn, AlexPosn) -> String
 prettyPosn (Just (AlexPosn _ l1 c1, AlexPosn _ l2 c2))
   | l1 == l2  = "Line " ++ show l1 ++ " Column " ++ show c1 ++ "-" ++ show c2
   | otherwise = "Line " ++ show l1 ++ " Column " ++ show c1 ++ " to Line " ++ show l2 ++ " Column " ++ show c2
 prettyPosn Nothing = "Unknown Position"
 
+-- | Throw an error in the `ParserMonad' in the location of the given `Locatable'
 throwLocalError :: Locatable a -> String -> ParserMonad b
 throwLocalError (Locatable _ ps) s = throwError (s, ps)
 
+-- | Throw an error in the `ParserMonad' in the given location
 throwLocalErrorAt :: (AlexPosn, AlexPosn) -> String -> ParserMonad b
 throwLocalErrorAt ps s = throwError (s, Just ps)
 
+-- | Throw an error in the `ParserMonad' without a location
 throwGlobalError :: MonadError (String, Maybe (AlexPosn, AlexPosn)) m => String -> m a
 throwGlobalError = throwError . (, Nothing)
 
+-- | Define a local variable with the given identifier in the `ParserMonad'
 defineLocalVar :: Locatable String -> ParserMonad (Locatable String)
 defineLocalVar Locatable{..} = do
   ParserState{..} <- State.get
@@ -182,6 +207,7 @@ defineLocalVar Locatable{..} = do
   State.put $ ParserState{ stateLocalVars = Set.insert locatableValue stateLocalVars, .. }
   return Locatable{..}
 
+-- | Define a register with the given identifier and width in the `ParserMonad'
 defineReg :: Locatable String -> Locatable Int -> ParserMonad (Locatable RegType)
 defineReg var n = do
   ParserState{..} <- State.get
@@ -198,6 +224,7 @@ defineReg var n = do
       ParserState{ stateGlobalIdents = Map.insert (locatableValue var) (RegDefn <$ var <*> n) stateGlobalIdents, .. }
   return $ RegType <$> var <*> n
 
+-- | Define an instruction with the given identifier and arguments in the `ParserMonad'
 defineInst :: Locatable String -> Locatable [Type] -> ParserMonad (Locatable InstType)
 defineInst var ts = do
   ParserState{..} <- State.get
@@ -214,6 +241,7 @@ defineInst var ts = do
       $ ParserState{ stateGlobalIdents = Map.insert (locatableValue var) (InstDefn <$ var <*> ts) stateGlobalIdents, .. }
   return $ InstType <$> var <*> ts
 
+-- | Define a button with the given identifier and physical id in the `ParserMonad'
 defineButton :: Locatable String -> Locatable Int -> ParserMonad (Locatable ButtonType)
 defineButton var n = do
   ParserState{..} <- State.get
@@ -230,6 +258,7 @@ defineButton var n = do
       $ ParserState{ stateGlobalIdents = Map.insert (locatableValue var) (ButtonDefn <$ var) stateGlobalIdents, .. }
   return $ ButtonType <$> var <*> n
 
+-- | Define a memory with the given identifier, data width and address width in the `ParserMonad'
 defineMemory :: Locatable String -> Locatable Int -> Locatable Int -> ParserMonad (Locatable Memory)
 defineMemory var dataWidth addressWidth = do
   ParserState{..} <- State.get
@@ -246,11 +275,13 @@ defineMemory var dataWidth addressWidth = do
       $ ParserState{ stateGlobalIdents = Map.insert (locatableValue var) (MemoryDefn <$ var <*> dataWidth <*> addressWidth) stateGlobalIdents, .. }
   return $ Memory <$> var <*> dataWidth <*> addressWidth
 
+-- | Return if the given identifier represents a local variable in the current scope
 isLocalVar :: String -> ParserMonad Bool
 isLocalVar var = do
   ParserState{..} <- State.get
   return $ Set.member var stateLocalVars
 
+-- | Check if the given identifier represents a local variable in the current scope
 checkLocalVar :: Locatable String -> ParserMonad ()
 checkLocalVar var = do
   ParserState{..} <- State.get
@@ -268,6 +299,7 @@ checkLocalVar var = do
     Nothing               ->
       throwLocalError var $ "Variable " ++ locatableValue var ++ " not defined"
 
+-- | Check if the given identifier represents a register
 checkRegDefined :: Locatable String -> ParserMonad ()
 checkRegDefined var = do
   ParserState{..} <- State.get
@@ -284,6 +316,7 @@ checkRegDefined var = do
     Nothing               ->
       throwLocalError var $ "Register " ++ locatableValue var ++ " not defined"
 
+-- | Check if the given identifier represents an instruction
 checkInstDefined :: Locatable String -> ParserMonad ()
 checkInstDefined var = do
   ParserState{..} <- State.get
@@ -300,6 +333,7 @@ checkInstDefined var = do
     Nothing               ->
       throwLocalError var $ "Instruction " ++ locatableValue var ++ " not defined"
 
+-- | Check if the given identifier represents a button
 checkButtonDefined :: Locatable String -> ParserMonad ()
 checkButtonDefined var = do
   ParserState{..} <- State.get
@@ -316,6 +350,7 @@ checkButtonDefined var = do
     Nothing               ->
       throwLocalError var $ "Button " ++ locatableValue var ++ " not defined"
 
+-- | Check if the given identifier represents a memory
 checkMemoryDefined :: Locatable String -> ParserMonad ()
 checkMemoryDefined var = do
   ParserState{..} <- State.get
@@ -332,6 +367,7 @@ checkMemoryDefined var = do
     Nothing                              ->
       throwLocalError var $ "Memory " ++ locatableValue var ++ " not defined"
 
+-- | Get the definition of the given identifier
 getIdentifierDefn :: Locatable String -> ParserMonad (Locatable Defn)
 getIdentifierDefn Locatable{..} = do
   ParserState{..} <- State.get
@@ -339,11 +375,13 @@ getIdentifierDefn Locatable{..} = do
     Nothing -> throwLocalError Locatable{..} $ "Identifier " ++ locatableValue ++ " not defined"
     Just d  -> return d
 
+-- | Clear all the currently defined local variables
 clearLocalVars :: ParserMonad ()
 clearLocalVars = do
   ParserState{..} <- State.get
   State.put $ ParserState{ stateLocalVars = Set.empty, .. }
 
+-- | Define the type of an encoding in the `ParserMonad'
 defineEncType :: Locatable Type -> Locatable Int -> ParserMonad (Locatable EncType)
 defineEncType t n = do
   ParserState{..} <- State.get
@@ -351,6 +389,7 @@ defineEncType t n = do
   State.put $ ParserState{ stateEncTypes = Map.insert (locatableValue t) (locatableValue n) stateEncTypes, .. }
   return $ EncType <$> t <*> n
 
+-- | Get the type of the given encoding
 getEncType :: Locatable Type -> ParserMonad Int
 getEncType Locatable{..} = case locatableValue of
   (BitsT n) -> return n
@@ -391,6 +430,7 @@ instEncDim' ts vs e = case locatableValue e of
     unless (n1 == n2) . throwLocalError e $ "Mismatched dimensions of bitwise exclusive or: Bits " ++ show n1 ++ " and Bits " ++ show n2
     return (n1, [], XorBitsExpr (ConcatBitsExpr (ConstBitsExpr bs1) e1') (ConcatBitsExpr (ConstBitsExpr bs2) e2'))
 
+-- | PROBABLY UNNEEDED ALONG WITH `UnsizedBitsExpr'
 instEncDim :: [Type] -> Locatable [String] -> Locatable UnsizedBitsExpr -> ParserMonad (Locatable Int, Locatable ([Bit], BitsExpr))
 instEncDim ts vs e = do
   (n, bs, e') <- instEncDim' ts vs e
@@ -410,5 +450,6 @@ printErrors s (Left (e, Just (AlexPosn a1 l1 c1, AlexPosn a2 l2 c2)))
   | otherwise = Left $
       prettyPosn (Just (AlexPosn a1 l1 c1, AlexPosn a2 l2 c2)) ++ ": " ++ e ++ "\nError spanning mulitple lines, I don't yet know how to display that!!!"
 
+-- | Run the given parser on the given input string and either return a nicely formatted error or the output of the parser
 runParser :: ParserMonad a -> String -> Either String a
 runParser m s = printErrors s $ runParser' m s
