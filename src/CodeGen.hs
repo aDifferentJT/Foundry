@@ -58,7 +58,7 @@ genBits bs = (show . length $ bs) ++ "'b" ++ concatMap show bs
 genInstDef :: Inst -> [String]
 genInstDef (Inst n _ _ (_, (bs, _))) =
   [ "`define is_inst_" ++ n ++ "(inst)"
-  , "(inst[" ++ show (length bs) ++ ":0]"
+  , "(inst[" ++ show (length bs - 1) ++ ":0]"
   , "=="
   , genBits bs ++ ")"
   ]
