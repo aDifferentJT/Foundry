@@ -18,9 +18,6 @@ module Parser.AlexPosn
 import Utils ((****))
 
 import Control.Applicative (liftA2)
-import Control.Monad.Trans.Class (MonadTrans(lift))
-import Control.Monad.Except (MonadError(throwError, catchError))
-import Control.Monad.Signatures (Catch)
 
 -- | `AlexPosn' records the location of a token in the input text.  It has three
 -- fields: the address (number of characters preceding the token), line number

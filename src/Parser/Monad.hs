@@ -71,8 +71,8 @@ import Parser.AST
 import Utils (Bit)
 
 import Control.Arrow ((***), first)
-import Control.Monad (when, unless)
-import Control.Monad.Except (MonadError, ExceptT, runExceptT, throwError)
+import Control.Monad (when)
+import Control.Monad.Except (MonadError, throwError)
 import Control.Monad.Trans.State (StateT, runStateT)
 import qualified Control.Monad.Trans.State as State
 
@@ -415,7 +415,7 @@ encPrefix' :: BitsExpr -> ParserMonad ([Bit], BitsExpr)
 encPrefix' e = case e of
   ConstBitsExpr bs       -> return (bs, ConstBitsExpr [])
   EncBitsExpr n v        -> return ([], EncBitsExpr n v)
-  ConcatBitsExpr n e1 e2 ->
+  ConcatBitsExpr _ e1 e2 ->
     encPrefix' e1 >>= \case
       (bs, ConstBitsExpr []) -> first (bs ++) <$> encPrefix' e2
       (bs1, e1'            ) -> return (bs1, ConcatBitsExpr (sizeOfEnc e1' + sizeOfEnc e2) e1' e2)

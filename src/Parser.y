@@ -215,7 +215,7 @@ EncType           : '<' Type '>' ':' bitsT int                   {% fmap (<* $1)
 
 ArgList           :: { Locatable [Locatable String] }
 ArgList           : {- empty -}                                  { pure [] }
-ArgList           : ArgList '<' Var '>'                          { ($3:) `fmap` $1 <* $4 }
+ArgList           : ArgList '<' Var '>'                          { ($3:) `fmap` $1 <* $2 <* $4 }
 
 VarWithArgs       :: { (Locatable String, Locatable Defn, Locatable [String]) }
 VarWithArgs       : Var ArgList                                  {%

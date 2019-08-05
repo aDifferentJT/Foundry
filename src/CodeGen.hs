@@ -13,7 +13,7 @@ module CodeGen
   ) where
 
 import Proc
-import Utils (Bit(..))
+import Utils (Bit(..), groupWith)
 
 import Control.Arrow (first)
 import Data.List (intercalate, transpose)
@@ -31,7 +31,7 @@ align' :: [Int] -> a -> [a] -> [[a]] -> [a]
 align'  _     _ _    []    = []
 align'  _     _ _    [s]   = s
 align' (n:ns) p sep (s:ss) = padRightTo n p s ++ sep ++ align' ns p sep ss
-align'  []    _ _   (s:ss) = error "ns shorter than ss"
+align'  []    _ _   (_:_)  = error "ns shorter than ss"
 
 combineBlocks :: [a -> String] -> a -> String
 combineBlocks fs = intercalate "\n\n" . flip fmap fs . flip ($)
@@ -56,7 +56,7 @@ genBits :: [Bit] -> String
 genBits bs = (show . length $ bs) ++ "'b" ++ concatMap show bs
 
 genInstDef :: Inst -> [String]
-genInstDef (Inst n _ _ (_, (bs, e))) =
+genInstDef (Inst n _ _ (_, (bs, _))) =
   [ "`define is_inst_" ++ n ++ "(inst)"
   , "(inst[" ++ show (length bs) ++ ":0]"
   , "=="
@@ -124,10 +124,10 @@ boilerplateRegs = combineBlocks . map (const . intercalate "\n") $
   ]
 
 genButtonWire :: Button -> String
-genButtonWire (Button name i _) = "  wire " ++ name ++ "_trigger;"
+genButtonWire (Button name _ _) = "  wire " ++ name ++ "_trigger;"
 
 genButtonTrigger :: Button -> [String]
-genButtonTrigger (Button name i _) =
+genButtonTrigger (Button name _ _) =
   [ "  SINGLE_TRIGGER trig_" ++ name
   , "(.clk(clk), .trigger_in(`BUTTON_" ++ name ++ "),"
   , ".trigger_out(" ++ name ++ "_trigger));"
@@ -167,33 +167,34 @@ genBoolExpr (ruleArgs, rules) (encArgs, (bits, enc)) (LogicalOrExpr b1 b2)  = un
   ]
 
 genExpr :: ([String], [ImplRule]) -> ([String], ([Bit], BitsExpr)) -> Expr -> String
-genExpr (ruleArgs, rules) (encArgs, (bits, enc)) (VarExpr var)         =
-  case lookup var $ zip ruleArgs encArgs of
-    Just encArg ->
-      case findVarInEnc encArg (length bits) enc of
-        Just (i, j) -> "inst[" ++ show j ++ ":" ++ show i ++ "]"
-        Nothing     -> error $ "Variable " ++ var ++ " not used in encoding"
-    Nothing     -> error $ "No variable " ++ var
-genExpr (ruleArgs, rules) (encArgs, (bits, enc)) (RegExpr reg)         = reg
-genExpr (ruleArgs, rules) (encArgs, (bits, enc)) (MemAccessExpr mem _) = mem ++ "_out"
-genExpr (ruleArgs, rules) (encArgs, (bits, enc)) (ConstExpr n)         = show n
-genExpr (ruleArgs, rules) (encArgs, (bits, enc)) (BinaryConstExpr bs)  = genBits bs
-genExpr (ruleArgs, rules) (encArgs, (bits, enc)) (OpExpr o e1 e2)      = unwords
-  [ genExpr (ruleArgs, rules) (encArgs, (bits, enc)) e1
-  , genOp o
-  , genExpr (ruleArgs, rules) (encArgs, (bits, enc)) e2
-  ]
-genExpr (ruleArgs, rules) (encArgs, (bits, enc)) (TernaryExpr b e1 e2) = unwords
-  [ genBoolExpr (ruleArgs, rules) (encArgs, (bits, enc)) b
-  , "?"
-  , genExpr (ruleArgs, rules) (encArgs, (bits, enc)) e1
-  , ":"
-  , genExpr (ruleArgs, rules) (encArgs, (bits, enc)) e2
-  ]
+genExpr (ruleArgs, rules) (encArgs, (bits, enc)) e = case e of
+  VarExpr var         ->
+    case lookup var $ zip ruleArgs encArgs of
+      Just encArg ->
+        case findVarInEnc encArg (length bits) enc of
+          Just (i, j) -> "inst[" ++ show j ++ ":" ++ show i ++ "]"
+          Nothing     -> error $ "Variable " ++ var ++ " not used in encoding"
+      Nothing     -> error $ "No variable " ++ var
+  RegExpr reg         -> reg
+  MemAccessExpr mem _ -> mem ++ "_out"
+  ConstExpr n         -> show n
+  BinaryConstExpr bs  -> genBits bs
+  OpExpr o e1 e2      -> unwords
+    [ genExpr (ruleArgs, rules) (encArgs, (bits, enc)) e1
+    , genOp o
+    , genExpr (ruleArgs, rules) (encArgs, (bits, enc)) e2
+    ]
+  TernaryExpr b e1 e2 -> unwords
+    [ genBoolExpr (ruleArgs, rules) (encArgs, (bits, enc)) b
+    , "?"
+    , genExpr (ruleArgs, rules) (encArgs, (bits, enc)) e1
+    , ":"
+    , genExpr (ruleArgs, rules) (encArgs, (bits, enc)) e2
+    ]
 
 genInstRule :: (ImplRule -> Maybe Expr) -> Inst -> Maybe ([String], String)
-genInstRule pred (Inst name _ (ruleArgs, rules) (encArgs, (bits, enc))) =
-  case mapMaybe pred rules of
+genInstRule p (Inst name _ (ruleArgs, rules) (encArgs, (bits, enc))) =
+  case mapMaybe p rules of
     []      -> Nothing
     [expr]  -> Just
       ( [ "    execute & `is_inst_" ++ name ++ "(inst)"
@@ -206,18 +207,18 @@ genInstRule pred (Inst name _ (ruleArgs, rules) (encArgs, (bits, enc))) =
     (_:_:_) -> error "More than one rule"
 
 genIsInstRule :: (ImplRule -> Maybe Expr) -> Inst -> Maybe (String, String)
-genIsInstRule pred (Inst name _ (ruleArgs, rules) (encArgs, (bits, enc))) =
-  case mapMaybe pred rules of
+genIsInstRule p (Inst name _ (_, rules) (_, (_, _))) =
+  case mapMaybe p rules of
     []      -> Nothing
-    [expr]  -> Just
+    [_]     -> Just
       ( "    (execute & `is_inst_" ++ name ++ "(inst)) |"
       , "Instruction: " ++ name
       )
     (_:_:_) -> error "More than one rule"
 
 genButtonRule :: (ImplRule -> Maybe Expr) -> Button -> Maybe ([String], String)
-genButtonRule pred (Button name _ rules) =
-  case mapMaybe pred rules of
+genButtonRule p (Button name _ rules) =
+  case mapMaybe p rules of
     []      -> Nothing
     [expr]  -> Just
       ( [ "    !running & " ++ name ++ "_trigger"
@@ -230,18 +231,18 @@ genButtonRule pred (Button name _ rules) =
     (_:_:_) -> error "More than one rule"
 
 genIsButtonRule :: (ImplRule -> Maybe Expr) -> Button -> Maybe (String, String)
-genIsButtonRule pred (Button name _ rules) =
-  case mapMaybe pred rules of
+genIsButtonRule p (Button name _ rules) =
+  case mapMaybe p rules of
     []      -> Nothing
-    [expr]  -> Just
+    [_]     -> Just
       ( "    (!running & " ++ name ++ "_trigger) |"
       , "Button: " ++ name
       )
     (_:_:_) -> error "More than one rule"
 
 genAlwaysRule :: (ImplRule -> Maybe Expr) -> [ImplRule] -> Maybe ([String], String)
-genAlwaysRule pred rules =
-  case mapMaybe pred rules of
+genAlwaysRule p rules =
+  case mapMaybe p rules of
     []      -> Nothing
     [expr]  -> Just
       ( [ "    execute ?"
@@ -253,27 +254,27 @@ genAlwaysRule pred rules =
     (_:_:_) -> error "More than one rule"
 
 genIsAlwaysRule :: (ImplRule -> Maybe Expr) -> [ImplRule] -> Maybe (String, String)
-genIsAlwaysRule pred rules =
-  case mapMaybe pred rules of
+genIsAlwaysRule p rules =
+  case mapMaybe p rules of
     []      -> Nothing
-    [expr]  -> Just
+    [_]     -> Just
       ( "    execute |"
       , "Always"
       )
     (_:_:_) -> error "More than one rule"
 
-genRegDecl :: Reg -> [String]
-genRegDecl (Reg name size _) =
+genNonEncRegDecl :: Reg -> [String]
+genNonEncRegDecl (Reg name size _) =
   [ "  reg [" ++ show (size - 1) ++ ":0] "
   , name
   , "= 0;"
   ]
 
-genRegDecls :: Proc -> String
-genRegDecls = combineLines' ' ' " " "\n" . map genRegDecl . regs
+genNonEncRegDecls :: Proc -> String
+genNonEncRegDecls = combineLines' ' ' " " "\n" . map genNonEncRegDecl . filter (\(Reg _ _ e) -> null e) . regs
 
-genRegImpl :: [Inst] -> [Button] -> [ImplRule] -> Reg -> String
-genRegImpl insts buttons always (Reg name size enc) = combineLines ' ' " // " "\n" $
+genNonEncRegImpl :: [Inst] -> [Button] -> [ImplRule] -> Reg -> String
+genNonEncRegImpl insts buttons always (Reg name size _) = combineLines ' ' " // " "\n" $
   [ ("  // Register: " ++ name, "")
   , ("  wire [" ++ show (size - 1) ++ ":0] new_" ++ name ++ " =", "")
   ] ++
@@ -288,11 +289,14 @@ genRegImpl insts buttons always (Reg name size enc) = combineLines ' ' " // " "\
           | otherwise   = Nothing
         regPred  _      = Nothing
 
-genRegImpls :: Proc -> String
-genRegImpls Proc{..} = intercalate "\n\n" . map (genRegImpl insts buttons always) $ regs
+genEncRegDecls Proc{..} = combineLines' ' ' " " "\n" [[undefined regGroup] | regGroup <- encRegs] -- TODO
+  where encRegs = groupWith (\(Reg _ n _) -> n) . filter (\(Reg _ _ e) -> not . null $ e) $ regs
+
+genNonEncRegImpls :: Proc -> String
+genNonEncRegImpls Proc{..} = intercalate "\n\n" . map (genNonEncRegImpl insts buttons always) $ regs
 
 genMemoryOut :: Memory -> [String]
-genMemoryOut (Memory name dataWidth addressWidth) =
+genMemoryOut (Memory name dataWidth _) =
   [ "  wire [" ++ show (dataWidth - 1) ++ ":0]"
   , name ++ "_out;"
   ]
@@ -315,7 +319,7 @@ genMemoryRAMs :: Proc -> String
 genMemoryRAMs = combineLines' ' ' " " "\n" . map genMemoryRAM . memorys
 
 genMemoryIn :: Proc -> Memory -> String
-genMemoryIn Proc{..} (Memory name dataWidth addressWidth) = combineLines ' ' " // " "\n" $
+genMemoryIn Proc{..} (Memory name dataWidth _) = combineLines ' ' " // " "\n" $
   [ ("  // Memory: " ++ name, "")
   , ("  wire [" ++ show (dataWidth - 1) ++ ":0] " ++ name ++ "_in =", "")
   ] ++
@@ -334,7 +338,7 @@ genMemoryIns :: Proc -> String
 genMemoryIns p = intercalate "\n\n" . map (genMemoryIn p) . memorys $ p
 
 genMemoryAddr :: Proc -> Memory -> String
-genMemoryAddr Proc{..} (Memory name dataWidth addressWidth) = combineLines ' ' " // " "\n" $
+genMemoryAddr Proc{..} (Memory name _ addressWidth) = combineLines ' ' " // " "\n" $
   [ ("  // Memory: " ++ name, "")
   , ("  wire [" ++ show (addressWidth - 1) ++ ":0] " ++ name ++ "_addr =", "")
   ] ++
@@ -377,7 +381,7 @@ genMemoryAddrs :: Proc -> String
 genMemoryAddrs p = intercalate "\n\n" . map (genMemoryAddr p) . memorys $ p
 
 genMemoryWrite :: Proc -> Memory -> String
-genMemoryWrite Proc{..} (Memory name dataWidth addressWidth) = combineLines ' ' " // " "\n" $
+genMemoryWrite Proc{..} (Memory name _ addressWidth) = combineLines ' ' " // " "\n" $
   [ ("  // Memory: " ++ name, "")
   , ("  wire [" ++ show (addressWidth - 1) ++ ":0] " ++ name ++ "_write =", "")
   ] ++
@@ -395,8 +399,8 @@ genMemoryWrite Proc{..} (Memory name dataWidth addressWidth) = combineLines ' ' 
 genMemoryWrites :: Proc -> String
 genMemoryWrites p = intercalate "\n\n" . map (genMemoryWrite p) . memorys $ p
 
-genUpdateRegs :: Proc -> String
-genUpdateRegs Proc{..} = intercalate "\n" $
+genUpdateNonEncRegs :: Proc -> String
+genUpdateNonEncRegs Proc{..} = intercalate "\n" $
   [ "  always @ (posedge clk) begin"
   ] ++
   alignLines' ' ' " "
@@ -404,7 +408,7 @@ genUpdateRegs Proc{..} = intercalate "\n" $
       [ "    " ++ name
       , "<="
       , "new_" ++ name ++ ";"
-      ] | (Reg name _ _) <- Reg "inst" undefined undefined : regs] ++
+      ] | (Reg name _ _) <- regs] ++
   [ "  end"
   ]
 
@@ -414,9 +418,9 @@ genProcModule = combineBlocks
   , genButtonTriggers
   , genMemoryOuts
   , boilerplateRegs
-  , genRegDecls
-  , genRegImpls
-  , genUpdateRegs
+  , genNonEncRegDecls
+  , genNonEncRegImpls
+  , genUpdateNonEncRegs
   , genMemoryIns
   , genMemoryAddrs
   , genMemoryWrites

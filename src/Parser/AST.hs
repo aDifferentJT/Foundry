@@ -38,8 +38,6 @@ module Parser.AST
   , rawImpls
   ) where
 
-import Parser.AlexPosn (Locatable)
-
 import Proc
 
 import Utils (Bit)

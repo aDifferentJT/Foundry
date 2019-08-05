@@ -72,9 +72,9 @@ findVarInEnc var off (ConcatBitsExpr _ e1 e2) =
   case findVarInEnc var off e1 of
     Just res -> Just res
     Nothing  -> findVarInEnc var (off + sizeOfEnc e1) e2
-findVarInEnc _   _   (AndBitsExpr _ _ _) = Nothing
-findVarInEnc _   _   (OrBitsExpr  _ _ _) = Nothing
-findVarInEnc _   _   (XorBitsExpr _ _ _) = Nothing
+findVarInEnc _   _   AndBitsExpr{} = Nothing
+findVarInEnc _   _   OrBitsExpr{}  = Nothing
+findVarInEnc _   _   XorBitsExpr{} = Nothing
 
 -- | A binary operation
 data Op          
