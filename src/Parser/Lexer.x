@@ -36,6 +36,8 @@ tokens :-
   instructions                { wrapPlainToken Instructions }
   buttons                     { wrapPlainToken Buttons }
   memory                      { wrapPlainToken MemoryTok }
+  leds                        { wrapPlainToken LedsTok }
+  led                         { wrapPlainToken LedTok }
   \:                          { wrapPlainToken Colon }
   \-                          { wrapPlainToken Hyphen }
   \=                          { wrapPlainToken Equals }
@@ -77,6 +79,8 @@ data Token
   | Instructions              -- ^ @instructions@
   | Buttons                   -- ^ @buttons@
   | MemoryTok                 -- ^ @memory@
+  | LedsTok                   -- ^ @leds@
+  | LedTok                    -- ^ @led@
   | Colon                     -- ^ @:@
   | Hyphen                    -- ^ @-@
   | Equals                    -- ^ @=@

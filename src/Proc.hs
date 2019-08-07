@@ -19,6 +19,7 @@ module Proc
   , Expr(..)
   , LValue(..)
   , ImplRule(..)
+  , LedImpl(..)
   , Reg(..)
   , Inst(..)
   , Button(..)
@@ -117,6 +118,10 @@ data LValue
 data ImplRule = ImplRule LValue Expr
   deriving Show
 
+-- | A rule for assigning a value to an LED
+data LedImpl = LedImpl Int Int Expr
+  deriving Show
+
 -- | A register definition, with identifier, width and possibly an encoding
 data Reg = Reg String Int (Maybe [Bit])
   deriving Show
@@ -140,6 +145,7 @@ data Proc = Proc
   , buttons  :: [Button]   -- ^ Button definitions
   , memorys  :: [Memory]   -- ^ Memory definitions
   , always   :: [ImplRule] -- ^ Various implementation rules that occur on every clock tick
+  , leds     :: [LedImpl]  -- ^ Various rules defining the outputs of the LEDs
   , encTypes :: [EncType]  -- ^ The widths of the encodings of various types
   }
   deriving Show

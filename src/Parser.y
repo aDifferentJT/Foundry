@@ -11,13 +11,13 @@ Stability   : experimental
 -}
 module Parser (parse, parseFile) where
 
-import Proc
 import Parser.AST
 import Parser.AlexPosn
 import Parser.Lexer
 import Parser.Monad
+import Parser.TypeCheck
 
-import Utils (Bit(..), zipBy, zip3By)
+import Utils (Bit(..))
 
 import Control.Applicative (liftA2)
 import Control.Lens (over)
@@ -39,6 +39,8 @@ import Data.List(intercalate)
   instructions  { Locatable Instructions _ }
   buttons       { Locatable Buttons _ }
   memory        { Locatable MemoryTok _ }
+  leds          { Locatable LedsTok _ }
+  led           { Locatable LedTok _ }
   ':'           { Locatable Colon _ }
   '-'           { Locatable Hyphen _ }
   '='           { Locatable Equals _ }
@@ -82,55 +84,6 @@ import Data.List(intercalate)
 %left '&&' '||'
 %%
 
-Proc              :: { Locatable Proc }
-Proc              : RawProc                                      {%
-  case locatableValue $1 of
-    RawProc{..} -> do
-      regs' <- case _rawRegs of
-        []  -> throwGlobalError "No register block"
-        [x] -> return x
-        _   -> throwGlobalError "More than one register block"
-      let regEncs = filter (\case RegEnc _ _ -> True; _ -> False) _rawEncs
-      regs <- case zipBy (\(RegType n _) -> n) (\(RegEnc n _) -> n) regs' regEncs of
-        (_ , xs, _             ) -> return $ [Reg n t (Nothing) | (RegType n t) <- xs]
-        (_ , _ , (RegEnc n _):_) -> throwGlobalError $ "Encoding given for unknown register " ++ n
-        (xs, [], []            ) -> return $ [Reg n t (Just e)  | (RegType n t, RegEnc _ e) <- xs]
-      insts' <- case _rawInsts of
-                 []  -> throwGlobalError "No instruction block"
-                 [x] -> return x
-                 _   -> throwGlobalError "More than one instruction block"
-      let instEncs = filter (\case InstEnc _ _ _ -> True; _ -> False) _rawEncs
-      let instImpls = filter (\case InstImpl "always" _ _ -> False; InstImpl _ _ _ -> True; _ -> False) _rawImpls
-      let instName n vs = intercalate " " (n : ["<" ++ v ++ ">" | v <- vs])
-      insts <- case zip3By (\(InstType n _) -> n) (\(InstImpl n _ _) -> n) (\(InstEnc n _ _) -> n) insts' instImpls instEncs of
-        (_, (InstType n _, _):_, _, _, _, _, _)    -> throwGlobalError $ "Instruction " ++ n ++ " has no encoding"
-        (_, _, (InstType n _, _):_, _, _, _, _)    -> throwGlobalError $ "Instruction " ++ n ++ " has no implementation"
-        (_, _, _, (InstImpl n vs _, _):_, _, _, _) -> throwGlobalError $ "Implementation and encoding given for unknown instruction " ++ instName n vs
-        (_, _, _, _, (InstType n _):_, _, _)       -> throwGlobalError $ "Instruction " ++ n ++ " has no encoding or implementation"
-        (_, _, _, _, _, (InstImpl n vs _):_, _)    -> throwGlobalError $ "Implementation given for unknown instruction " ++ instName n vs
-        (_, _, _, _, _, _, (InstEnc n vs _):_)     -> throwGlobalError $ "Encoding given for unknown instruction " ++ instName n vs
-        (xs, [], [], [], [], [], [])               -> return $ [Inst n ts (vs1, rs) (vs2, e) | (InstType n ts, InstImpl _ vs1 rs, InstEnc _ vs2 e) <- xs]
-      buttons' <- case _rawButtons of
-        []  -> throwGlobalError "No register block"
-        [x] -> return x
-        _   -> throwGlobalError "More than one register block"
-      let buttonImpls = filter (\case ButtonImpl _ _ -> True; _ -> False) _rawImpls
-      buttons <- case zipBy (\(ButtonType n _) -> n) (\(ButtonImpl n _) -> n) buttons' buttonImpls of
-        (_, (ButtonType n _):_, _) -> throwGlobalError $ "Button " ++ n ++ " has no implementation"
-        (_, _, (ButtonImpl n _):_) -> throwGlobalError $ "Implementation given for unknown button " ++ n
-        (xs, [], []) -> return $ [Button n t rs | (ButtonType n t, ButtonImpl _ rs) <- xs]
-      memorys <- case _rawMemorys of
-        []  -> throwGlobalError "No register block"
-        [x] -> return x
-        _   -> throwGlobalError "More than one register block"
-      always <- case filter (\case InstImpl "always" _ _ -> True; _ -> False) _rawImpls of
-        []                        -> return []
-        [InstImpl "always" [] rs] -> return rs
-        _                         -> throwGlobalError "More than one always block"
-      let encTypes = _rawEncTypes
-      return $ Proc{..} <$ $1
-}
-
 RawProc           :: { Locatable RawProc }
 RawProc           : {- empty -}                                  { pure $ initialProc }
                   | RegTypes RawProc                             { over rawRegs     `fmap` (fmap (:) $1) <*> $2 }
@@ -140,6 +93,7 @@ RawProc           : {- empty -}                                  { pure $ initia
                   | EncType RawProc                              { over rawEncTypes `fmap` (fmap (:) $1) <*> $2 }
                   | Enc RawProc                                  { over rawEncs     `fmap` (fmap (:) $1) <*> $2 }
                   | Impl RawProc                                 { over rawImpls    `fmap` (fmap (:) $1) <*> $2 }
+                  | LedImpls RawProc                             { over rawLedImpls `fmap` (fmap (:) $1) <*> $2 }
 
 Var               :: { Locatable String }
 Var               : varTok                                       { $1 }
@@ -324,13 +278,20 @@ Impl              : VarWithArgs '{' List(ImplRule) '}'           {% fmap (<* $4)
       (MemoryDefn _ _) -> throwLocalError var $ "Implementation given for memory " ++ locatableValue var
 }
 
+LedImpl           :: { Locatable LedImpl }
+LedImpl           : led '[' int ']' '<-' Expr                    { LedImpl `fmap` $3 <*> $3 <*> $6 <* $1 }
+                  | led '[' int ':' int ']' '<-' Expr            { LedImpl `fmap` $3 <*> $5 <*> $8 <* $1 }
+
+LedImpls          :: { Locatable [LedImpl] }
+LedImpls          : leds '{' List(LedImpl) '}'                   { $3 <* $1 <* $4 }
+
 {
 parseError :: Locatable Token -> ParserMonad a
 parseError = flip throwLocalError "Parse Error"
 
 -- | Parse the given string and return either a nicely formatted error or a `Proc'
 parse :: String -> Either String Proc
-parse = fmap locatableValue . runParser parseM
+parse = runParser (fmap locatableValue parseM >>= typeCheck)
 
 -- | Parse the given file and return either a nicely formatted error or a `Proc'
 parseFile :: FilePath -> ExceptT String IO Proc

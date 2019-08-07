@@ -289,11 +289,12 @@ genNonEncRegImpl insts buttons always (Reg name size _) = combineLines ' ' " // 
           | otherwise   = Nothing
         regPred  _      = Nothing
 
-genEncRegDecls Proc{..} = combineLines' ' ' " " "\n" [[undefined regGroup] | regGroup <- encRegs] -- TODO
-  where encRegs = groupWith (\(Reg _ n _) -> n) . filter (\(Reg _ _ e) -> not . null $ e) $ regs
-
 genNonEncRegImpls :: Proc -> String
 genNonEncRegImpls Proc{..} = intercalate "\n\n" . map (genNonEncRegImpl insts buttons always) $ regs
+
+genEncRegDecls :: Proc -> String
+genEncRegDecls Proc{..} = combineLines' ' ' " " "\n" [tail [undefined regGroup] | regGroup <- encRegs] -- TODO
+  where encRegs = groupWith (\(Reg _ n _) -> n) . filter (\(Reg _ _ e) -> not . null $ e) $ regs
 
 genMemoryOut :: Memory -> [String]
 genMemoryOut (Memory name dataWidth _) =
@@ -399,6 +400,16 @@ genMemoryWrite Proc{..} (Memory name _ addressWidth) = combineLines ' ' " // " "
 genMemoryWrites :: Proc -> String
 genMemoryWrites p = intercalate "\n\n" . map (genMemoryWrite p) . memorys $ p
 
+genLed :: LedImpl -> [String]
+genLed (LedImpl n1 n2 e) =
+  [ "assign led[" ++ show n2 ++ ":" ++ show n1 ++ "]"
+  , "="
+  , genExpr ([], []) ([], ([], ConstBitsExpr [])) e
+  ]
+
+genLeds :: Proc -> String
+genLeds = combineLines' ' ' " " "\n" . map genLed . leds
+
 genUpdateNonEncRegs :: Proc -> String
 genUpdateNonEncRegs Proc{..} = intercalate "\n" $
   [ "  always @ (posedge clk) begin"
@@ -419,12 +430,14 @@ genProcModule = combineBlocks
   , genMemoryOuts
   , boilerplateRegs
   , genNonEncRegDecls
+  , genEncRegDecls
   , genNonEncRegImpls
   , genUpdateNonEncRegs
   , genMemoryIns
   , genMemoryAddrs
   , genMemoryWrites
   , genMemoryRAMs
+  , genLeds
   , endModule
   ]
 

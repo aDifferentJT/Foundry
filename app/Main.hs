@@ -5,9 +5,7 @@ module Main(main) where
 import Parser (parseFile)
 import CodeGen (genCode)
 
-import Data.Maybe (fromMaybe, listToMaybe)
-
-import Control.Monad (when, unless)
+import Control.Monad (when)
 import Control.Monad.Except (ExceptT, runExceptT, throwError)
 import Control.Monad.Trans (lift)
 import System.Console.GetOpt

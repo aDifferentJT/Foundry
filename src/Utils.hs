@@ -16,6 +16,7 @@ module Utils
   , bitsToInt
   , intToBits
   , groupWith
+  , fst3
   , zipBy
   , zip3By
   , (****)
@@ -76,6 +77,10 @@ groupWith :: Ord b => (a -> b) -> [a] -> [(b, [a])]
 groupWith f = Map.toList . groupWith' f
   where groupWith' :: Ord b => (a -> b) -> [a] -> Map.Map b [a]
         groupWith' f' = foldr (\x -> Map.insertWith (++) (f' x) [x]) Map.empty
+
+-- | Get the first item from a triple
+fst3 :: (a, b, c) -> a
+fst3 (x, _, _) = x
 
 -- | Use the given functions to group elements from two lists
 zipBy :: Ord c => (a -> c)             -- ^ The function on xs

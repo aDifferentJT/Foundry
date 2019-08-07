@@ -26,6 +26,7 @@ module Parser.AST
       , _rawEncTypes
       , _rawEncs
       , _rawImpls
+      , _rawLedImpls
     )
   , initialProc
   -- * Lenses
@@ -36,6 +37,7 @@ module Parser.AST
   , rawEncTypes
   , rawEncs
   , rawImpls
+  , rawLedImpls
   ) where
 
 import Proc
@@ -77,11 +79,12 @@ data RawProc = RawProc
   , _rawEncTypes :: [EncType]      -- ^ The encoding types
   , _rawEncs     :: [Enc]          -- ^ The encodings
   , _rawImpls    :: [Impl]         -- ^ The implementations
+  , _rawLedImpls :: [[LedImpl]]    -- ^ The led blocks
   }
   deriving Show
 
 -- | The initial `RawProc` to be added to as we parse the file
 initialProc :: RawProc
-initialProc = RawProc [] [] [] [] [] [] []
+initialProc = RawProc [] [] [] [] [] [] [] []
 
 makeLenses ''RawProc

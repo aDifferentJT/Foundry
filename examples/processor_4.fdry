@@ -50,6 +50,13 @@ memory {
 - progMem : RAM 8 4
 }
 
+leds {
+  led[7:0]   <- buffer
+  led[15:8]  <- progMem[pc]
+  led[19:16] <- pc
+  led[23:20] <- accum
+}
+
 always {
   inst <- progMem[pc]
   pc <- pc + 1
@@ -148,3 +155,4 @@ run {
 
 execute {
 }
+
