@@ -155,6 +155,11 @@ genBoolExpr (ruleArgs, rules) (encArgs, (bits, enc)) (EqualityExpr e1 e2)   = un
   , " == "
   , genExpr (ruleArgs, rules) (encArgs, (bits, enc)) e2
   ]
+genBoolExpr (ruleArgs, rules) (encArgs, (bits, enc)) (InequalityExpr e1 e2) = unwords
+  [ genExpr (ruleArgs, rules) (encArgs, (bits, enc)) e1
+  , " != "
+  , genExpr (ruleArgs, rules) (encArgs, (bits, enc)) e2
+  ]
 genBoolExpr (ruleArgs, rules) (encArgs, (bits, enc)) (LogicalAndExpr b1 b2) = unwords
   [ genBoolExpr (ruleArgs, rules) (encArgs, (bits, enc)) b1
   , " && "
@@ -356,7 +361,7 @@ genMemoryAddr Proc{..} (Memory name _ addressWidth) = combineLines ' ' " // " "\
         memAccessForExpr :: Expr -> Maybe Expr
         memAccessForExpr (VarExpr _)           = Nothing
         memAccessForExpr (RegExpr _)           = Nothing
-        memAccessForExpr (MemAccessExpr _ e)   = Just e
+        memAccessForExpr (MemAccessExpr n e)   = if n == name then Just e else memAccessForExpr e
         memAccessForExpr (ConstExpr _)         = Nothing
         memAccessForExpr (BinaryConstExpr _)   = Nothing
         memAccessForExpr (OpExpr _ e1 e2)      = case memAccessForExpr e1 of
@@ -369,6 +374,9 @@ genMemoryAddr Proc{..} (Memory name _ addressWidth) = combineLines ' ' " // " "\
             Nothing  -> memAccessForExpr e2
         memAccessForBoolExpr :: BoolExpr -> Maybe Expr
         memAccessForBoolExpr (EqualityExpr   e1 e2) = case memAccessForExpr e1 of
+          Just e1' -> Just e1'
+          Nothing  -> memAccessForExpr e2
+        memAccessForBoolExpr (InequalityExpr e1 e2) = case memAccessForExpr e1 of
           Just e1' -> Just e1'
           Nothing  -> memAccessForExpr e2
         memAccessForBoolExpr (LogicalAndExpr b1 b2) = case memAccessForBoolExpr b1 of

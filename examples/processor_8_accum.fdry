@@ -1,0 +1,148 @@
+instructions {
+- halt
+- mov <Int 5>
+- add <Int 5>
+- sub <Int 5>
+- ld  <Int 5>
+- sto <Int 5>
+- jp  <Int 5>
+- jpz <Int 5>
+}
+
+<Inst> : Bits 8
+<halt>    = 0b00000000
+<mov <n>> = 0b001 ++ <n>
+<add <n>> = 0b010 ++ <n>
+<sub <n>> = 0b011 ++ <n>
+<ld <n>>  = 0b100 ++ <n>
+<sto <n>> = 0b101 ++ <n>
+<jp <n>>  = 0b110 ++ <n>
+<jpz <n>> = 0b111 ++ <n>
+
+registers {
+- inst   : Reg 8
+- pc     : Reg 5
+- accum  : Reg 8
+- buffer : Reg 8
+}
+
+buttons {
+- bufferI0  : Button 0
+- bufferI1  : Button 1
+- bufferI2  : Button 2
+- bufferI3  : Button 3
+- bufferI4  : Button 4
+- bufferI5  : Button 5
+- bufferI6  : Button 6
+- bufferI7  : Button 7
+- pc_inc    : Button 8
+- pc_dec    : Button 9
+- pc_clr    : Button 12
+- accum_clr : Button 13
+- run       : Button 14
+- execute   : Button 15
+}
+
+memory {
+- dataMem : RAM 8 5
+- progMem : RAM 8 5
+}
+
+leds {
+  led[7:0]   <- progMem[pc]
+  led[15:8]  <- accum
+  led[19:16] <- pc
+  led[23:20] <- 0b000
+}
+
+always {
+  inst <- progMem[pc]
+  pc <- pc + 1
+}
+
+halt {
+  pc <- pc
+}
+
+mov <n> {
+  accum <- n
+}
+
+add <n> {
+  accum <- accum + dataMem[n]
+}
+
+sub <n> {
+  accum <- accum - dataMem[n]
+}
+
+ld <n> {
+  accum <- dataMem[n]
+}
+
+sto <n> {
+  dataMem[n] <- accum
+}
+
+jp <n> {
+  pc <- n
+}
+
+jpz <n> {
+  pc <- accum == 0b00000000 ? n : pc + 1
+}
+
+bufferI0 {
+  buffer <- buffer ^ 0b00000001
+}
+
+bufferI1 {
+  buffer <- buffer ^ 0b00000010
+}
+
+bufferI2 {
+  buffer <- buffer ^ 0b00000100
+}
+
+bufferI3 {
+  buffer <- buffer ^ 0b00001000
+}
+
+bufferI4 {
+  buffer <- buffer ^ 0b00010000
+}
+
+bufferI5 {
+  buffer <- buffer ^ 0b00100000
+}
+
+bufferI6 {
+  buffer <- buffer ^ 0b01000000
+}
+
+bufferI7 {
+  buffer <- buffer ^ 0b10000000
+}
+
+pc_inc {
+  pc <- pc + 1
+}
+
+pc_dec {
+  pc <- pc - 1
+}
+
+pc_clr {
+  pc <- 0
+}
+
+accum_clr {
+  accum <- 0
+}
+
+run {
+}
+
+execute {
+}
+

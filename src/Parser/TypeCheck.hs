@@ -7,7 +7,6 @@ import Parser.Monad
 
 import Utils (fst3, zipBy, zip3By)
 
-import Data.List (intercalate)
 import Data.Maybe (mapMaybe)
 
 typeCheck :: RawProc -> ParserMonad Proc

@@ -92,6 +92,7 @@ data Op
 -- | An expression for a boolean
 data BoolExpr
   = EqualityExpr Expr Expr           -- ^ Equality check
+  | InequalityExpr Expr Expr         -- ^ Inequality check
   | LogicalAndExpr BoolExpr BoolExpr -- ^ Logical and
   | LogicalOrExpr BoolExpr BoolExpr  -- ^ Logical or
   deriving Show

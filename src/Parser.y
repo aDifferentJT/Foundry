@@ -52,6 +52,7 @@ import Data.List(intercalate)
   '^'           { Locatable Xor _ }
   '++'          { Locatable Concat _ }
   '=='          { Locatable Equality _ }
+  '!='          { Locatable Inequality _ }
   '&&'          { Locatable LogicalAnd _ }
   '||'          { Locatable LogicalOr _ }
   '?'           { Locatable Question _ }
@@ -80,7 +81,7 @@ import Data.List(intercalate)
 %left '+' '-'
 %left '*' '/'
 %left '&' '|' '^'
-%left '=='
+%left '==' '!='
 %left '&&' '||'
 %%
 
@@ -216,9 +217,10 @@ Enc               : '<' VarWithArgs '>' '=' BitsExpr             {% fmap (<* $1)
 }
 
 BoolExpr          :: { Locatable BoolExpr }
-BoolExpr          : Expr '==' Expr                               { EqualityExpr   `fmap` $1 <*> $3 }
-                  | BoolExpr '&&' BoolExpr                       { LogicalAndExpr `fmap` $1 <*> $3 }
-                  | BoolExpr '||' BoolExpr                       { LogicalOrExpr  `fmap` $1 <*> $3 }
+BoolExpr          : Expr '==' Expr                               { EqualityExpr    `fmap` $1 <*> $3 }
+                  | Expr '!=' Expr                               { InequalityExpr `fmap` $1 <*> $3 }
+                  | BoolExpr '&&' BoolExpr                       { LogicalAndExpr  `fmap` $1 <*> $3 }
+                  | BoolExpr '||' BoolExpr                       { LogicalOrExpr   `fmap` $1 <*> $3 }
 
 Expr              :: { Locatable Expr }
 Expr              : '(' Expr ')'                                 { $2 <* $1 <* $3 }

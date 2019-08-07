@@ -49,6 +49,7 @@ tokens :-
   \^                          { wrapPlainToken Xor }
   \+\+                        { wrapPlainToken Concat }
   \=\=                        { wrapPlainToken Equality }
+  \!\=                        { wrapPlainToken Inequality }
   \&\&                        { wrapPlainToken LogicalAnd }
   \|\|                        { wrapPlainToken LogicalOr }
   \?                          { wrapPlainToken Question }
@@ -92,6 +93,7 @@ data Token
   | Xor                       -- ^ @^@
   | Concat                    -- ^ @++@
   | Equality                  -- ^ @==@
+  | Inequality                -- ^ @!=@
   | LogicalAnd                -- ^ @&&@
   | LogicalOr                 -- ^ @||@
   | Question                  -- ^ @?@
