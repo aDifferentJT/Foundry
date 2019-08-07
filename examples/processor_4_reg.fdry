@@ -1,0 +1,180 @@
+instructions {
+- halt
+- addI <Reg 4> <Int 2>
+- subI <Reg 4> <Int 2>
+- addR <Reg 4> <Reg 4>
+- subR <Reg 4> <Reg 4>
+- ldm  <Reg 4> <Reg 4>
+- stm  <Reg 4> <Reg 4>
+- jp   <Int 4>
+- jpz  <Int 4>
+- out  <Reg 4>
+}
+
+registers {
+- inst   : Reg 8
+- pc     : Reg 4
+- buffer : Reg 8
+- r1     : Reg 4
+- r2     : Reg 4
+- r3     : Reg 4
+- r4     : Reg 4
+- outR   : Reg 4
+}
+
+<Reg 4> : Bits 2
+<r1> = 0b00
+<r2> = 0b01
+<r3> = 0b10
+<r4> = 0b11
+
+<Inst> : Bits 8
+<halt>         = 0b00000000
+<addI <x> <n>> = 0b0001 ++ <x> ++ <n>
+<subI <x> <n>> = 0b0010 ++ <x> ++ <n>
+<addR <x> <y>> = 0b0011 ++ <x> ++ <y>
+<subR <x> <y>> = 0b0100 ++ <x> ++ <y>
+<ldm <x> <y>>  = 0b0101 ++ <x> ++ <y>
+<stm <x> <y>>  = 0b0110 ++ <x> ++ <y>
+<jp <n>>       = 0b0111 ++ <n>
+<jpz <n>>      = 0b1000 ++ <n>
+<out <x>>      = 0b1001 ++ <x> ++ 0b00
+
+buttons {
+- bufferI0  : Button 0
+- bufferI1  : Button 1
+- bufferI2  : Button 2
+- bufferI3  : Button 3
+- bufferI4  : Button 4
+- bufferI5  : Button 5
+- bufferI6  : Button 6
+- bufferI7  : Button 7
+-- - store     : Button 8
+-- - clear     : Button 9
+-- - pc_inc    : Button 10
+-- - pc_dec    : Button 11
+-- - pc_clr    : Button 12
+-- - accum_clr : Button 13
+- run       : Button 14
+- execute   : Button 15
+}
+
+memory {
+- dataMem : RAM 4 4
+- progMem : RAM 8 4
+}
+
+leds {
+  led[7:0]   <- buffer
+  led[15:8]  <- progMem[pc]
+  led[19:16] <- pc
+  led[23:20] <- outR
+}
+
+always {
+  inst <- progMem[pc]
+  pc <- pc + 1
+}
+
+halt {
+  pc <- pc
+}
+
+addI <x> <n> {
+  x <- x + n
+}
+
+subI <x> <n> {
+  x <- x - n
+}
+
+addR <x> <y> {
+  x <- x + y
+}
+
+subR <x> <y> {
+  x <- x - y
+}
+
+ldm <x> <y> {
+  x <- dataMem[y]
+}
+
+stm <x> <y> {
+  dataMem[y] <- x
+}
+
+jp <n> {
+  pc <- n
+}
+
+jpz <n> {
+  pc <- outR == 0b0000 ? n : pc + 1
+}
+
+out <x> {
+  outR <- x
+}
+
+bufferI0 {
+  buffer <- buffer ^ 0b00000001
+}
+
+bufferI1 {
+  buffer <- buffer ^ 0b00000010
+}
+
+bufferI2 {
+  buffer <- buffer ^ 0b00000100
+}
+
+bufferI3 {
+  buffer <- buffer ^ 0b00001000
+}
+
+bufferI4 {
+  buffer <- buffer ^ 0b00010000
+}
+
+bufferI5 {
+  buffer <- buffer ^ 0b00100000
+}
+
+bufferI6 {
+  buffer <- buffer ^ 0b01000000
+}
+
+bufferI7 {
+  buffer <- buffer ^ 0b10000000
+}
+
+-- store {
+--   progMem[pc] <- buffer
+-- }
+-- 
+-- clear {
+--   buffer <- 0
+-- }
+-- 
+-- pc_inc {
+--   pc <- pc + 1
+-- }
+-- 
+-- pc_dec {
+--   pc <- pc - 1
+-- }
+-- 
+-- pc_clr {
+--   pc <- 0
+-- }
+-- 
+-- accum_clr {
+--   accum <- 0
+-- }
+
+run {
+}
+
+execute {
+}
+

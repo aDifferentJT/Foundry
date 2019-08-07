@@ -13,7 +13,7 @@ module CodeGen
   ) where
 
 import Proc
-import Utils (Bit(..), groupWith)
+import Utils (Bit(..), Endianness(Little), bitsToInt, groupWith)
 
 import Control.Arrow (first)
 import Data.List (intercalate, transpose)
@@ -149,62 +149,76 @@ genOp BitwiseAnd = "&"
 genOp BitwiseOr  = "|"
 genOp BitwiseXor = "^"
 
-genBoolExpr :: ([String], [ImplRule]) -> ([String], ([Bit], BitsExpr)) -> BoolExpr -> String
-genBoolExpr (ruleArgs, rules) (encArgs, (bits, enc)) (EqualityExpr e1 e2)   = unwords
-  [ genExpr (ruleArgs, rules) (encArgs, (bits, enc)) e1
+genBoolExpr :: [Type] -> [String] -> ([String], ([Bit], BitsExpr)) -> BoolExpr -> String
+genBoolExpr argTypes ruleArgs (encArgs, (bits, enc)) (EqualityExpr e1 e2)   = unwords
+  [ genExpr argTypes ruleArgs (encArgs, (bits, enc)) e1
   , " == "
-  , genExpr (ruleArgs, rules) (encArgs, (bits, enc)) e2
+  , genExpr argTypes ruleArgs (encArgs, (bits, enc)) e2
   ]
-genBoolExpr (ruleArgs, rules) (encArgs, (bits, enc)) (InequalityExpr e1 e2) = unwords
-  [ genExpr (ruleArgs, rules) (encArgs, (bits, enc)) e1
+genBoolExpr argTypes ruleArgs (encArgs, (bits, enc)) (InequalityExpr e1 e2) = unwords
+  [ genExpr argTypes ruleArgs (encArgs, (bits, enc)) e1
   , " != "
-  , genExpr (ruleArgs, rules) (encArgs, (bits, enc)) e2
+  , genExpr argTypes ruleArgs (encArgs, (bits, enc)) e2
   ]
-genBoolExpr (ruleArgs, rules) (encArgs, (bits, enc)) (LogicalAndExpr b1 b2) = unwords
-  [ genBoolExpr (ruleArgs, rules) (encArgs, (bits, enc)) b1
+genBoolExpr argTypes ruleArgs (encArgs, (bits, enc)) (LogicalAndExpr b1 b2) = unwords
+  [ genBoolExpr argTypes ruleArgs (encArgs, (bits, enc)) b1
   , " && "
-  , genBoolExpr (ruleArgs, rules) (encArgs, (bits, enc)) b2
+  , genBoolExpr argTypes ruleArgs (encArgs, (bits, enc)) b2
   ]
-genBoolExpr (ruleArgs, rules) (encArgs, (bits, enc)) (LogicalOrExpr b1 b2)  = unwords
-  [ genBoolExpr (ruleArgs, rules) (encArgs, (bits, enc)) b1
+genBoolExpr argTypes ruleArgs (encArgs, (bits, enc)) (LogicalOrExpr b1 b2)  = unwords
+  [ genBoolExpr argTypes ruleArgs (encArgs, (bits, enc)) b1
   , " || "
-  , genBoolExpr (ruleArgs, rules) (encArgs, (bits, enc)) b2
+  , genBoolExpr argTypes ruleArgs (encArgs, (bits, enc)) b2
   ]
 
-genExpr :: ([String], [ImplRule]) -> ([String], ([Bit], BitsExpr)) -> Expr -> String
-genExpr (ruleArgs, rules) (encArgs, (bits, enc)) e = case e of
+genExpr :: [Type] -> [String] -> ([String], ([Bit], BitsExpr)) -> Expr -> String
+genExpr argTypes ruleArgs (encArgs, (bits, enc)) e = case e of
   VarExpr var         ->
-    case lookup var $ zip ruleArgs encArgs of
-      Just encArg ->
-        case findVarInEnc encArg (length bits) enc of
-          Just (i, j) -> "inst[" ++ show j ++ ":" ++ show i ++ "]"
-          Nothing     -> error $ "Variable " ++ var ++ " not used in encoding"
+    case lookup var $ zip ruleArgs (zip argTypes encArgs) of
+      Just (argType, encArg) ->
+        case argType of
+          RegT size ->
+            case findVarInEnc encArg (length bits) enc of
+              Just (i, j) -> "_regs" ++ show size ++ "[inst[" ++ show j ++ ":" ++ show i ++ "]]"
+              Nothing     -> error $ "Variable " ++ var ++ " not used in encoding"
+          BitsT _ ->
+            case findVarInEnc encArg (length bits) enc of
+              Just (i, j) -> "inst[" ++ show j ++ ":" ++ show i ++ "]"
+              Nothing     -> error $ "Variable " ++ var ++ " not used in encoding"
+          IntT _ ->
+            case findVarInEnc encArg (length bits) enc of
+              Just (i, j) -> "inst[" ++ show j ++ ":" ++ show i ++ "]"
+              Nothing     -> error $ "Variable " ++ var ++ " not used in encoding"
+          InstT -> error "Instruction argument"
       Nothing     -> error $ "No variable " ++ var
   RegExpr reg         -> reg
   MemAccessExpr mem _ -> mem ++ "_out"
   ConstExpr n         -> show n
   BinaryConstExpr bs  -> genBits bs
   OpExpr o e1 e2      -> unwords
-    [ genExpr (ruleArgs, rules) (encArgs, (bits, enc)) e1
+    [ genExpr argTypes ruleArgs (encArgs, (bits, enc)) e1
     , genOp o
-    , genExpr (ruleArgs, rules) (encArgs, (bits, enc)) e2
+    , genExpr argTypes ruleArgs (encArgs, (bits, enc)) e2
     ]
   TernaryExpr b e1 e2 -> unwords
-    [ genBoolExpr (ruleArgs, rules) (encArgs, (bits, enc)) b
+    [ genBoolExpr argTypes ruleArgs (encArgs, (bits, enc)) b
     , "?"
-    , genExpr (ruleArgs, rules) (encArgs, (bits, enc)) e1
+    , genExpr argTypes ruleArgs (encArgs, (bits, enc)) e1
     , ":"
-    , genExpr (ruleArgs, rules) (encArgs, (bits, enc)) e2
+    , genExpr argTypes ruleArgs (encArgs, (bits, enc)) e2
     ]
 
+genExpr' :: Expr -> String
+genExpr' = genExpr [] [] ([], ([], ConstBitsExpr []))
+
 genInstRule :: (ImplRule -> Maybe Expr) -> Inst -> Maybe ([String], String)
-genInstRule p (Inst name _ (ruleArgs, rules) (encArgs, (bits, enc))) =
+genInstRule p (Inst name argTypes (ruleArgs, rules) (encArgs, (bits, enc))) =
   case mapMaybe p rules of
     []      -> Nothing
     [expr]  -> Just
       ( [ "    execute & `is_inst_" ++ name ++ "(inst)"
         , "?"
-        , genExpr (ruleArgs, rules) (encArgs, (bits, enc)) expr
+        , genExpr argTypes ruleArgs (encArgs, (bits, enc)) expr
         , ":"
         ]
       , "Instruction: " ++ name
@@ -228,7 +242,7 @@ genButtonRule p (Button name _ rules) =
     [expr]  -> Just
       ( [ "    !running & " ++ name ++ "_trigger"
         , "?"
-        , genExpr ([], rules) ([], ([], ConstBitsExpr [])) expr
+        , genExpr' expr
         , ":"
         ]
       , "Button: " ++ name
@@ -251,7 +265,7 @@ genAlwaysRule p rules =
     []      -> Nothing
     [expr]  -> Just
       ( [ "    execute ?"
-        , genExpr ([], rules) ([], ([], ConstBitsExpr [])) expr
+        , genExpr' expr
         , ":"
         ]
       , "Always"
@@ -270,7 +284,7 @@ genIsAlwaysRule p rules =
 
 genNonEncRegDecl :: Reg -> [String]
 genNonEncRegDecl (Reg name size _) =
-  [ "  reg [" ++ show (size - 1) ++ ":0] "
+  [ "  reg [" ++ show (size - 1) ++ ":0]"
   , name
   , "= 0;"
   ]
@@ -295,10 +309,34 @@ genNonEncRegImpl insts buttons always (Reg name size _) = combineLines ' ' " // 
         regPred  _      = Nothing
 
 genNonEncRegImpls :: Proc -> String
-genNonEncRegImpls Proc{..} = intercalate "\n\n" . map (genNonEncRegImpl insts buttons always) $ regs
+genNonEncRegImpls Proc{..} = intercalate "\n\n" . map (genNonEncRegImpl insts buttons always) . filter (\(Reg _ _ e) -> null e) $ regs
+
+genUpdateNonEncRegs :: Proc -> String
+genUpdateNonEncRegs Proc{..} = intercalate "\n" $
+  [ "  always @ (posedge clk) begin"
+  ] ++
+  alignLines' ' ' " "
+    [
+      [ "    " ++ name
+      , "<="
+      , "new_" ++ name ++ ";"
+      ] | Reg name _ e <- regs, null e] ++
+  [ "  end"
+  ]
+
+genEncRegDecl :: (Int, [Reg]) -> String
+genEncRegDecl (size, rs) =
+  "  reg  [" ++ show (size - 1) ++ ":0] _regs" ++ show size ++ " [0:" ++ show n ++ "];\n" ++ combineLines' ' ' " " "\n" [
+  [ "  wire"
+  , "[" ++ show (size - 1) ++ ":0]"
+  , name
+  , "="
+  , "_regs" ++ show size ++ "[" ++ genBits bs ++ "];"
+  ] | Reg name _ (Just bs) <- rs]
+  where n = maximum . map (\(Reg _ _ (Just bs)) -> bitsToInt Little bs) $ rs
 
 genEncRegDecls :: Proc -> String
-genEncRegDecls Proc{..} = combineLines' ' ' " " "\n" [tail [undefined regGroup] | regGroup <- encRegs] -- TODO
+genEncRegDecls Proc{..} = intercalate "\n\n" . map genEncRegDecl $ encRegs
   where encRegs = groupWith (\(Reg _ n _) -> n) . filter (\(Reg _ _ e) -> not . null $ e) $ regs
 
 genMemoryOut :: Memory -> [String]
@@ -412,24 +450,11 @@ genLed :: LedImpl -> [String]
 genLed (LedImpl n1 n2 e) =
   [ "assign led[" ++ show n2 ++ ":" ++ show n1 ++ "]"
   , "="
-  , genExpr ([], []) ([], ([], ConstBitsExpr [])) e
+  , genExpr' e ++ ";"
   ]
 
 genLeds :: Proc -> String
 genLeds = combineLines' ' ' " " "\n" . map genLed . leds
-
-genUpdateNonEncRegs :: Proc -> String
-genUpdateNonEncRegs Proc{..} = intercalate "\n" $
-  [ "  always @ (posedge clk) begin"
-  ] ++
-  alignLines' ' ' " "
-    [
-      [ "    " ++ name
-      , "<="
-      , "new_" ++ name ++ ";"
-      ] | (Reg name _ _) <- regs] ++
-  [ "  end"
-  ]
 
 genProcModule :: Proc -> String
 genProcModule = combineBlocks

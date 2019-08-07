@@ -1,0 +1,154 @@
+-- THIS DOES NOT WORK, MULTIPLE MEMORY ACCESSES PER CLOCK CYCLE NOT YET IMPLEMENTED
+
+instructions {
+- add <Reg 8> <Reg 8> <Reg 8>
+- sub <Reg 8> <Reg 8> <Reg 8>
+- br  <Int 5>
+- brz <Int 5>
+- ld  <Int 3> <Reg 8>
+- halt
+}
+
+registers {
+- inst   : Reg 8
+- pc     : Reg 5
+- buffer : Reg 8
+- r1     : Reg 8
+- r2     : Reg 8
+- r3     : Reg 8
+- r4     : Reg 8
+}
+
+<Reg 8> : Bits 2
+<r1> = 0b00
+<r2> = 0b01
+<r3> = 0b10
+<r4> = 0b11
+
+<Inst> : Bits 8
+<add <x> <y> <z>> = 0b00 ++ <x> ++ <y> ++ <z>
+<sub <x> <y> <z>> = 0b01 ++ <x> ++ <y> ++ <z>
+<br <n>>          = 0b111 ++ <n>
+<brz <n>>         = 0b110 ++ <n>
+<ld <n> <x>>      = 0b100 ++ <n> ++ <x>
+<halt>            = 0b10100000
+
+buttons {
+- bufferI0  : Button 0
+- bufferI1  : Button 1
+- bufferI2  : Button 2
+- bufferI3  : Button 3
+- bufferI4  : Button 4
+- bufferI5  : Button 5
+- bufferI6  : Button 6
+- bufferI7  : Button 7
+- pc_inc    : Button 8
+- pc_dec    : Button 9
+- reg_inc   : Button 10
+- reg_dec   : Button 11
+- pc_clr    : Button 12
+- reg_clr   : Button 13
+- run       : Button 14
+- execute   : Button 15
+}
+
+memory {
+- progMem : RAM 8 5
+}
+
+leds {
+  led[7:0]   <- progMem[pc]
+  led[15:8]  <- r1 -- Should be active register
+  led[19:16] <- pc
+  led[20]    <- 0b0 -- Should be zeroFlag
+  led[23:21] <- 0b00 -- Should be id of active register
+}
+
+always {
+  inst <- progMem[pc]
+  pc <- pc + 1
+}
+
+add <x> <y> <z> {
+  x <- y + z
+}
+
+sub <x> <y> <z> {
+  x <- y - z
+}
+
+br <n> {
+  pc <- n
+}
+
+brz <n> {
+--  pc <- accum != 0b00000000 ? n : pc + 1
+}
+
+ld <n> <x> {
+  x <- 0b00000 ++ n
+}
+
+halt {
+  pc <- pc
+}
+
+bufferI0 {
+  buffer <- buffer ^ 0b00000001
+}
+
+bufferI1 {
+  buffer <- buffer ^ 0b00000010
+}
+
+bufferI2 {
+  buffer <- buffer ^ 0b00000100
+}
+
+bufferI3 {
+  buffer <- buffer ^ 0b00001000
+}
+
+bufferI4 {
+  buffer <- buffer ^ 0b00010000
+}
+
+bufferI5 {
+  buffer <- buffer ^ 0b00100000
+}
+
+bufferI6 {
+  buffer <- buffer ^ 0b01000000
+}
+
+bufferI7 {
+  buffer <- buffer ^ 0b10000000
+}
+
+pc_inc {
+  pc <- pc + 1
+}
+
+pc_dec {
+  pc <- pc - 1
+}
+
+reg_inc {
+}
+
+reg_dec {
+}
+
+pc_clr {
+  pc <- 0
+}
+
+reg_clr {
+}
+
+run {
+}
+
+execute {
+}
+
