@@ -15,14 +15,16 @@ module Utils
   , Endianness(Little, Big)
   , bitsToInt
   , intToBits
+  , mapInitLast
   , groupWith
+  , selectLargestBy
   , fst3
   , zipBy
   , zip3By
   , (****)
   ) where
 
-import Control.Arrow ((***))
+import Control.Arrow (first, (***))
 import Data.Bits (shiftL, shiftR, (.&.), (.|.))
 import Data.List (sortBy, unfoldr)
 import qualified Data.Map as Map
@@ -34,7 +36,7 @@ import Text.Read (readPrec)
 data Bit
   = Zero -- ^ A 0 bit
   | One  -- ^ A 1 bit
-  deriving (Eq, Enum)
+  deriving (Eq, Ord, Enum)
 
 instance Show Bit where
   show Zero = "0"
@@ -67,6 +69,12 @@ intToBits Little = unfoldr f
         f x = Just (toEnum (x .&. 1), shiftR x 1)
 intToBits Big    = reverse . intToBits Little
 
+-- | Map all the elemnts of this list one way bar the last which is mapped a different way
+mapInitLast :: (a -> b) -> (a -> b) -> [a] -> [b]
+mapInitLast _ _ []     = []
+mapInitLast _ g [x]    = [g x]
+mapInitLast f g (x:xs) = f x : mapInitLast f g xs
+
 -- | Sort the list by running the function
 -- note that this doesn't cache the function so it should be cheap
 sortWith :: Ord b => (a -> b) -> [a] -> [a]
@@ -77,6 +85,15 @@ groupWith :: Ord b => (a -> b) -> [a] -> [(b, [a])]
 groupWith f = Map.toList . groupWith' f
   where groupWith' :: Ord b => (a -> b) -> [a] -> Map.Map b [a]
         groupWith' f' = foldr (\x -> Map.insertWith (++) (f' x) [x]) Map.empty
+
+-- | Get the largest element by some metric and the rest
+selectLargestBy :: Ord b => (a -> b) -> [a] -> (Maybe a, [a])
+selectLargestBy f = first (fst <$>) . foldr g (Nothing, [])
+  where g x (Nothing, ys) = (Just (x, f x), ys)
+        g x (Just (y, fy), ys)
+          | fx <= fy  = (Just (y, fy), x:ys)
+          | otherwise = (Just (x, fx), y:ys)
+          where fx = f x
 
 -- | Get the first item from a triple
 fst3 :: (a, b, c) -> a
