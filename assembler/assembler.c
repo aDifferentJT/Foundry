@@ -49,12 +49,10 @@ void encArg(arg_t arg, bit_t* dest, void* data) {
   stmts_t* stmts = data;
   switch (arg.type) {
     case Arg_Literal:
-      {
       if (encInt(arg.value.literal, dest, arg.width)) {
         fprintf(stderr, "Literal argument %d doesn't fit\n", arg.value.literal);
       }
       break;
-      }
     case Arg_Label:
       {
         int loc = findLabel(arg.value.label, stmts);
@@ -151,9 +149,9 @@ stmts_t* parseFile(FILE* f) {
   char line[LINE_LEN];
   if (fgets(line, LINE_LEN, f)) {
     stmtsEnd = parseStmt(line, &stmts, &currentPos);
-  }
-  while (fgets(line, LINE_LEN, f)) {
-    stmtsEnd = parseStmt(line, stmtsEnd, &currentPos);
+    while (fgets(line, LINE_LEN, f)) {
+      stmtsEnd = parseStmt(line, stmtsEnd, &currentPos);
+    }
   }
   return stmts;
 }
@@ -164,48 +162,56 @@ void outputStmts(stmts_t* stmts, FILE* f) {
     switch (stmt->type) {
       case Stmt_Label:
         break;
-      case Stmt_Inst:
-        {
-          bit_t* bs = malloc(stmt->value.inst.width * sizeof(bit_t));
-          encInst(stmt->value.inst, bs, stmts);
-          for (int i = 0; i < stmt->value.inst.width; i++) {
-            switch (bs[i]) {
-              case Zero:
-                fprintf(f, "0");
-                break;
-              case One:
-                fprintf(f, "1");
-                break;
-            }
-          }
-          fprintf(f, "\n");
-        }
+      case Stmt_Inst: {
+                        bit_t* bs = malloc(stmt->value.inst.width * sizeof(bit_t));
+                        encInst(stmt->value.inst, bs, stmts);
+                        for (int i = 0; i < stmt->value.inst.width; i++) {
+                          switch (bs[i]) {
+                            case Zero:
+                              fprintf(f, "0");
+                              break;
+                            case One:
+                              fprintf(f, "1");
+                              break;
+                          }
+                        }
+                        fprintf(f, "\n");
+                      }
     }
     stmt = stmt->next;
   }
 }
 
 int main(int argc, char* argv[]) {
+  FILE* fIn = NULL;
+  FILE* fOut = NULL;
+
   if (argc != 3) {
     fprintf(stderr, "Wrong number of command line arguments, USAGE %s <input> <output>\n", argv[0]);
-    return 1;
+    goto error;
   }
-  FILE* fIn = fopen(argv[1], "r");
+  fIn = fopen(argv[1], "r");
   if (fIn == NULL) {
     fprintf(stderr, "Input file %s does not exist\n", argv[1]);
-    return 1;
+    goto error;
   }
-  FILE* fOut = strcmp(argv[2], "--") ? fopen(argv[2], "w") : stdout;
+  fOut = strcmp(argv[2], "--") ? fopen(argv[2], "w") : stdout;
   if (fOut == NULL) {
     fprintf(stderr, "Output file %s does not exist\n", argv[2]);
-    return 1;
+    goto error;
   }
 
   stmts_t* stmts = parseFile(fIn);
   outputStmts(stmts, fOut);
+  free(stmts);
 
   fclose(fIn);
   fclose(fOut);
-
   return 0;
+
+error:
+  if (fIn != NULL) { fclose(fIn); }
+  if (fOut != NULL) { fclose(fOut); }
+  return 1;
 }
+

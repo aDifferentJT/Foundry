@@ -9,8 +9,7 @@
 
 inst_error_t parseInst(char* str, inst_t* inst) {
   char* tok = strtok_r(str, " ", &str);
-  inst->name = malloc(sizeof(char) * (strlen(tok) + 1));
-  strcpy(inst->name, tok);
+  inst->name = strdup(tok);
   inst->width = 8;
   if (strcmp(tok, "halt") == 0) {
     inst->arg_count = 0;
@@ -37,8 +36,7 @@ inst_error_t parseInst(char* str, inst_t* inst) {
     inst->args[0].value.literal = strtol(tok, &p, 0);
     if (*p != '\0') {
       inst->args[0].type = Arg_Label;
-      inst->args[0].value.label = malloc(sizeof(char) * (strlen(tok) + 1));
-      strcpy(inst->args[0].value.label, tok);
+      inst->args[0].value.label = strdup(tok);
     }
   } else {
     fprintf(stderr, "instruction %s not recognised\n", tok);
