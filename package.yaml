@@ -29,8 +29,12 @@ library:
   dependencies:
     - array
     - containers
+    - filepath
     - lens
     - mtl
+    - process
+    - split
+    - temporary
     - transformers
 
 executables:
@@ -55,6 +59,13 @@ executables:
 #      - lens
 #      - mtl
 #      - text
+
+data-files:
+  - assembler/assembler.c
+  - assembler/assembler.h
+  - assembler/plugin.h
+  - assembler/utils.c
+  - assembler/utils.h
 
 tests:
   Parser-test:

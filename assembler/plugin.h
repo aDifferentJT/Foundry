@@ -47,7 +47,7 @@ typedef enum {
 
 reg_error_t encReg(char* reg, bit_t* dest, int width);
 
-void encInst(inst_t inst, bit_t* dest, void* data);
+bit_t* encInst(inst_t inst, void* data);
 
 #endif
 

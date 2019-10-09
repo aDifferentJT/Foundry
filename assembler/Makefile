@@ -16,7 +16,7 @@ utils.o: utils.c utils.h
 .PHONY: clean
 
 clean:
-	rm *.o
+	rm *.o assembler example.bin
 
 .PHONY: lint tidy check
 

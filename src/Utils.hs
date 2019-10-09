@@ -15,6 +15,8 @@ module Utils
   , Endianness(Little, Big)
   , bitsToInt
   , intToBits
+  , mapHead
+  , mapLast
   , mapInitLast
   , groupWith
   , selectLargestBy
@@ -22,6 +24,7 @@ module Utils
   , zipBy
   , zip3By
   , (****)
+  , joinTailsToHeads
   ) where
 
 import Control.Arrow (first, (***))
@@ -68,6 +71,17 @@ intToBits Little = unfoldr f
         f 0 = Nothing
         f x = Just (toEnum (x .&. 1), shiftR x 1)
 intToBits Big    = reverse . intToBits Little
+
+-- | Map only the head of the list
+mapHead :: (a -> a) -> [a] -> [a]
+mapHead _  []    = []
+mapHead f (x:xs) = f x : xs
+
+-- | Map only the last element of the list
+mapLast :: (a -> a) -> [a] -> [a]
+mapLast _  []    = []
+mapLast f  [x]   = [f x]
+mapLast f (x:xs) = x : mapLast f xs
 
 -- | Map all the elemnts of this list one way bar the last which is mapped a different way
 mapInitLast :: (a -> b) -> (a -> b) -> [a] -> [b]
@@ -185,3 +199,9 @@ zip3By' f g h (x:xs) (y:ys) (z:zs) = case compare3 (f x) (g y) (h z) of
        -> (b, b')          -- ^ Values \((x_2, y_2)\)
        -> (c, c')          -- ^ \((f(x_1, x_2), g(x_1, x_2))\)
 f **** g = uncurry (***) . (f *** g)
+
+joinTailsToHeads :: [a] -> [[[a]]] -> [[a]]
+joinTailsToHeads _ []         = []
+joinTailsToHeads _ [xs]       = xs
+joinTailsToHeads y (x1:x2:xs) = mapLast ((++ head x2) . (++ y)) x1 ++ joinTailsToHeads y (tail x2 : xs)
+

@@ -45,6 +45,26 @@ int encInt(int n, bit_t* dest, int width) {
   return n;
 }
 
+void parseIntArg(arg_t* arg, size_t width, char* str, char** saveptr) {
+  arg->width = width;
+  char* value = strtok_r(str, " ", saveptr);
+  char* p;
+  arg->value.literal = strtol(value, &p, 0);
+  if (*p == '\0') {
+    arg->type = Arg_Literal;
+  } else {
+    arg->type = Arg_Label;
+    arg->value.label = strdup(value);
+  }
+}
+
+void parseRegArg(arg_t* arg, size_t width, char* str, char** saveptr) {
+  arg->width = width;
+  char* value = strtok_r(str, " ", saveptr);
+  arg->type = Arg_Reg;
+  arg->value.label = strdup(value);
+}
+
 void encArg(arg_t arg, bit_t* dest, void* data) {
   stmts_t* stmts = data;
   switch (arg.type) {
@@ -162,21 +182,32 @@ void outputStmts(stmts_t* stmts, FILE* f) {
     switch (stmt->type) {
       case Stmt_Label:
         break;
-      case Stmt_Inst: {
-                        bit_t* bs = malloc(stmt->value.inst.width * sizeof(bit_t));
-                        encInst(stmt->value.inst, bs, stmts);
-                        for (int i = 0; i < stmt->value.inst.width; i++) {
-                          switch (bs[i]) {
-                            case Zero:
-                              fprintf(f, "0");
-                              break;
-                            case One:
-                              fprintf(f, "1");
-                              break;
-                          }
-                        }
-                        fprintf(f, "\n");
-                      }
+      case Stmt_Inst:
+        {
+          bit_t* bs = encInst(stmt->value.inst, stmts);
+          char byte = 0;
+          int i;
+          for (i = 0; i < stmt->value.inst.width; i++) {
+            byte <<= 1;
+            switch (bs[i]) {
+              case Zero:
+                byte &= ~1;
+                break;
+              case One:
+                byte |= 1;
+                break;
+            }
+            if (i % 8 == 7) {
+              fprintf(f, "%c", byte);
+            }
+          }
+          if (i % 8 != 0) {
+            for (; i % 8 != 7; i++) {
+              byte <<= 1;
+            }
+            fprintf(f, "%c", byte);
+          }
+        }
     }
     stmt = stmt->next;
   }
@@ -190,7 +221,7 @@ int main(int argc, char* argv[]) {
     fprintf(stderr, "Wrong number of command line arguments, USAGE %s <input> <output>\n", argv[0]);
     goto error;
   }
-  fIn = fopen(argv[1], "r");
+  fIn = strcmp(argv[2], "--") ? fopen(argv[1], "r") : stdin;
   if (fIn == NULL) {
     fprintf(stderr, "Input file %s does not exist\n", argv[1]);
     goto error;

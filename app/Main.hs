@@ -4,6 +4,7 @@ module Main(main) where
 
 import Parser (parseFile)
 import CodeGen (genCode)
+import Assembler.GenAssembler (genAssembler)
 
 import Control.Monad (when)
 import Control.Monad.Except (ExceptT, runExceptT, throwError)
@@ -15,31 +16,35 @@ import System.Console.GetOpt
   , ArgDescr(NoArg)
   )
 import System.Environment (getArgs)
-import System.FilePath ((-<.>))
+import System.FilePath ((-<.>), dropExtensions, takeBaseName, replaceBaseName)
 
 main :: IO ()
-main = runExceptT (
-  do
+main =
+  ( runExceptT $ do
     Options{..} <- getOpts
     ast <- parseFile fn
     lift . writeFile (fn -<.> ".v") . genCode $ ast
+    when shouldGenAssembler . lift . genAssembler (dropExtensions . replaceBaseName fn $ (takeBaseName fn ++ "_assembler")) $ ast
   ) >>= \case
     Left err -> putStrLn err
     Right () -> return ()
 
 data Options = Options
   { fn :: String
+  , shouldGenAssembler :: Bool
   , showHelp :: Bool
   }
 
 defaultOptions :: Options
 defaultOptions = Options
   ""
+  True
   False
 
 options :: [OptDescr (Options -> Options)]
 options =
-  [ Option ['h'] ["help"] (NoArg $ \o -> o { showHelp = True }) "Print this help message"
+  [ Option [] ["noAssembler"] (NoArg $ \o -> o { shouldGenAssembler = False }) "Do not generate an assembler"
+  , Option ['h'] ["help"] (NoArg $ \o -> o { showHelp = True }) "Print this help message"
   ]
 
 getOpts :: ExceptT String IO Options
