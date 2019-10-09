@@ -107,7 +107,7 @@ class CStmtsBuilder a where
   cStmtsRev :: [CStmtRaw] -> a
 
 instance CStmtsBuilder CStmts where
-  cStmtsRev ss = CStmts . reverse $ ss
+  cStmtsRev = CStmts . reverse
 
 instance (CStmtsBuilder a, CStmt s) => CStmtsBuilder (s -> a) where
   cStmtsRev ss s = cStmtsRev (AnyCStmt s : ss)
@@ -164,8 +164,8 @@ instance Pretty CStmtRaw where
   prettyLines (CSwitch c b)      = mapHead (("switch " ++) . (pretty (CParen c) ++) . (" " ++)) (prettyLines b)
   prettyLines (CCase e)          = ["case " ++ pretty e ++ ":"]
   prettyLines (CReturn e)        = ["return " ++ pretty e ++ ";"]
-  prettyLines (CBreak)           = ["break;"]
-  prettyLines (CContinue)        = ["continue;"]
+  prettyLines  CBreak            = ["break;"]
+  prettyLines  CContinue         = ["continue;"]
   prettyLines (CComment s c)     =
     let ls = prettyLines s in
     let n = maximum . map length $ ls in

@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards, TupleSections #-}
+{-# LANGUAGE TupleSections #-}
 
 {-|
 Module      : Verilog.AST

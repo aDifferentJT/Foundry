@@ -19,8 +19,8 @@ import System.Environment (getArgs)
 import System.FilePath ((-<.>), dropExtensions, takeBaseName, replaceBaseName)
 
 main :: IO ()
-main =
-  ( runExceptT $ do
+main = runExceptT 
+  ( do
     Options{..} <- getOpts
     ast <- parseFile fn
     lift . writeFile (fn -<.> ".v") . genCode $ ast

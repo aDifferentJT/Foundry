@@ -1,4 +1,4 @@
-{-# LANGUAGE LambdaCase, RecordWildCards, TupleSections #-}
+{-# LANGUAGE RecordWildCards, TupleSections #-}
 
 {-|
 Module      : Assembler.GenAssembler
@@ -29,7 +29,7 @@ import Paths_Foundry
 genStringIn :: CExpr e => e -> [String] -> CExprRaw
 genStringIn x []  = AnyCExpr (0 :: Int)
 genStringIn x [y] = CBinOp (cFuncCall "strcmp" x (CString y) :: CFuncCall) "==" (0 :: Int)
-genStringIn x ys  = AnyCExpr (cFuncCall "string_in" x $$ (map CString ys) $ "NULL" :: CFuncCall)
+genStringIn x ys  = AnyCExpr (cFuncCall "string_in" x $$ map CString ys $ "NULL" :: CFuncCall)
 
 genIncludes :: CStmts
 genIncludes = cStmts
@@ -139,7 +139,7 @@ genEncInst insts = CFuncDef
       ( CBlock
       . CStmts
       . map
-        (\((Inst ident _ _ (argNames, (bs, enc))), i) -> cStmts
+        (\(Inst ident _ _ (argNames, (bs, enc)), i) -> cStmts
           (CComment (CCase i) ident)
           (genBitsEnc "dest" bs)
           (fst . genBitsExprEnc (CIndex (CMember "inst" "args") . fromJust . flip elemIndex argNames) "dest" (length bs) "data" $ enc)
@@ -167,7 +167,7 @@ writePlugin h = hPutStrLn h . pretty . genPlugin
 
 compilePlugin :: FilePath -> FilePath -> IO ()
 compilePlugin pluginFn binFn = do
-  includeDirs <- sequence . map (fmap takeDirectory . getDataFileName) $
+  includeDirs <- mapM (fmap takeDirectory . getDataFileName)
     [ "assembler/assembler.h"
     , "assembler/plugin.h"
     , "assembler/utils.h"

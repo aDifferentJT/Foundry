@@ -1,5 +1,3 @@
-{-# LANGUAGE RecordWildCards, TupleSections #-}
-
 {-|
 Module      : Verilog.AST
 Description : An AST for Verilog

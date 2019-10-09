@@ -287,7 +287,7 @@ encRegValues Proc{..} size =
         encReg _        _         _                      _                         = Nothing
 
 genNonEncRegImpl :: [Inst] -> [Button] -> [ImplRule] -> Reg -> V.Verilog
-genNonEncRegImpl insts buttons always (Reg name size _) = V.Seq $
+genNonEncRegImpl insts buttons always (Reg name size _) = V.Seq
   [ V.Comment $ "Register: " ++ name
   , V.Wire
       size
@@ -297,9 +297,10 @@ genNonEncRegImpl insts buttons always (Reg name size _) = V.Seq $
         ( V.MultiCond (V.RawExpr name)
             (maybeToList . genAlwaysRule regPred $ always)
         )
-        (  (mapMaybe (genInstRule regPred) $ insts)
-        ++ (mapMaybe (genButtonRule regPred) $ buttons)
-        ))
+        (  mapMaybe (genInstRule regPred) insts
+        ++ mapMaybe (genButtonRule regPred) buttons
+        )
+      )
   ]
   where regPred :: ImplRule -> Maybe Expr
         regPred (ImplRule (RegLValue reg) expr)
@@ -319,7 +320,7 @@ genEncRegImpls Proc{..} = V.Seq
       (Just . V.MultiCond V.UndefinedBehaviour $ rs)
     | (i, j, rs) <- impls ]
   where impls :: [(Int, Integer, [(V.Expr, V.Expr)])]
-        impls = concatMap (\size -> zipWith (size,,) [0..] . map (\f -> mapMaybe (\(Inst n _ _ _) -> (\(x, _, z) -> (x, z)) <$> f n) $ insts) . encRegValues Proc{..} $ size) sizes
+        impls = concatMap (\size -> zipWith (size,,) [0..] . map (\f -> mapMaybe (\(Inst n _ _ _) -> (\(x, _, z) -> (x, z)) <$> f n) insts) . encRegValues Proc{..} $ size) sizes
         sizes :: [Int]
         sizes = map head . group . sort . map (\(Reg _ n _) -> n) $ regs
 
@@ -335,7 +336,7 @@ genEncRegIndices Proc{..} = V.Seq
       (Just . V.MultiCond V.UndefinedBehaviour $ rs)
     | (i, j, rs) <- impls ]
   where impls :: [(Int, Integer, [(V.Expr, V.Expr)])]
-        impls = concatMap (\size -> zipWith (size,,) [0..] . map (\f -> mapMaybe (\(Inst n _ _ _) -> (\(x, y, _) -> (x, y)) <$> f n) $ insts) . encRegValues Proc{..} $ size) sizes
+        impls = concatMap (\size -> zipWith (size,,) [0..] . map (\f -> mapMaybe (\(Inst n _ _ _) -> (\(x, y, _) -> (x, y)) <$> f n) insts) . encRegValues Proc{..} $ size) sizes
         sizes :: [Int]
         sizes = map head . group . sort . map (\(Reg _ n _) -> n) $ regs
 
@@ -348,7 +349,7 @@ genEncRegWrites Proc{..} = V.Seq
       (Just . V.MultiCond (V.Literal 0) $ rs)
     | (i, j, rs) <- impls ]
   where impls :: [(Int, Integer, [(V.Expr, V.Expr)])]
-        impls = concatMap (\size -> zipWith (size,,) [0..] . map (\f -> mapMaybe (\(Inst n _ _ _) -> (\(x, _, _) -> (x, V.Literal 1)) <$> f n) $ insts) . encRegValues Proc{..} $ size) sizes
+        impls = concatMap (\size -> zipWith (size,,) [0..] . map (\f -> mapMaybe (\(Inst n _ _ _) -> (\(x, _, _) -> (x, V.Literal 1)) <$> f n) insts) . encRegValues Proc{..} $ size) sizes
         sizes :: [Int]
         sizes = map head . group . sort . map (\(Reg _ n _) -> n) $ regs
 

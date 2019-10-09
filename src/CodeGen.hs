@@ -1,5 +1,3 @@
-{-# LANGUAGE RecordWildCards, TupleSections #-}
-
 {-|
 Module      : CodeGen
 Description : The code generation module

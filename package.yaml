@@ -84,3 +84,8 @@ tests:
       - -with-rtsopts=-N
     dependencies:
       - Foundry
+  HLint-test:
+    main:                test/HLint.hs
+    dependencies:
+      - Foundry
+      - hlint-test

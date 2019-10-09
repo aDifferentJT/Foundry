@@ -1,5 +1,3 @@
-{-# LANGUAGE RecordWildCards, TupleSections #-}
-
 {-|
 Module      : Verilog.Optimiser
 Description : A simple Verilog optimiser
@@ -52,10 +50,10 @@ simplifyOnce (MultiCond d [(c, e)])                = simplify $ TernaryOp (simpl
 simplifyOnce (MultiCond UndefinedBehaviour es)     =
   let es'    = groupWith snd es in
   let (d', es'')    = selectLargestBy (length . snd) es' in
-  MultiCond (simplify . maybe UndefinedBehaviour fst $ d') (map (\(y, xs) -> (simplify . FoldR "|" (Literal 0) . map fst $ xs, simplify y)) $ es'')
+  MultiCond (simplify . maybe UndefinedBehaviour fst $ d') (map (\(y, xs) -> (simplify . FoldR "|" (Literal 0) . map fst $ xs, simplify y)) es'')
 simplifyOnce (MultiCond d es)                      =
   let es'    = filter ((/= d) . fst) . groupWith snd $ es in
-  MultiCond (simplify d) (map (\(y, xs) -> (simplify . FoldR "|" (Literal 0) . map fst $ xs, simplify y)) $ es')
+  MultiCond (simplify d) (map (\(y, xs) -> (simplify . FoldR "|" (Literal 0) . map fst $ xs, simplify y)) es')
 simplifyOnce (FoldR _ a [])                        = simplify a
 simplifyOnce (FoldR _ _ [x])                       = simplify x
 simplifyOnce (FoldR o a xs)                        = FoldR o (simplify a) (map simplify xs)
