@@ -88,4 +88,4 @@ tests:
     main:                test/HLint.hs
     dependencies:
       - Foundry
-      - hlint-test
+      - hlint
