@@ -12,12 +12,12 @@
     "categories": [],
     "keywords": [],
     "engines": {
-        "vscode": "^1.23.0"
+        "vscode": "^1.37.1"
     },
     "activationEvents": [
         "onLanguage:foundry"
     ],
-    "main": "./client/out/extension",
+    "main": "./out/extension",
     "contributes": {
         "configuration": {
             "type": "object",
@@ -41,7 +41,19 @@
                     "description": "Traces the communication between VS Code and the language server."
                 }
             }
-        }
+        },
+        "languages": [
+            {
+                "id": "foundry",
+                "extensions": [
+                    ".fdry"
+                ],
+                "aliases": [
+                    "Foundry",
+                    "foundry"
+                ]
+            }
+        ]
     },
     "scripts": {
         "vscode:prepublish": "npm run update-vscode && cd .. && npm run compile",
@@ -50,8 +62,8 @@
         "postinstall": "vscode-install"
     },
     "dependencies": {
-        "vscode": "^1.23.0",
-        "vscode-languageclient": "^4.1.4"
+        "vscode": "^1.1.36",
+        "vscode-languageclient": "^5.2.1"
     },
     "devDependencies": {
         "@types/mocha": "^5.2.0",

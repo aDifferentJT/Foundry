@@ -49,16 +49,18 @@ executables:
       - Foundry
       - filepath
       - mtl
-#  Foundry-Language-Server-exe:
-#    main:                Main.hs
-#    source-dirs:         language_server
-#    dependencies:
-#      - Foundry
-#      - haskell-lsp
-#      - haskell-lsp-types
-#      - lens
-#      - mtl
-#      - text
+  Foundry-Language-Server-exe:
+    main:                Main.hs
+    source-dirs:         language_server
+    dependencies:
+      - Foundry
+      - haskell-lsp
+      - haskell-lsp-types
+      - lens
+      - mtl
+      - stm
+      - text
+      - transformers
 
 data-files:
   - assembler/assembler.c

@@ -1,2 +1,3 @@
 processor_*.v
 processor_*_assembler
+*.log

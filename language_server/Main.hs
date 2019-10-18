@@ -1,4 +1,4 @@
-{-# LANGUAGE BlockArguments, RecordWildCards #-}
+{-# LANGUAGE BlockArguments, LambdaCase, OverloadedStrings, RecordWildCards #-}
 
 module Main(main) where
 
@@ -6,14 +6,19 @@ import Parser (parseFile)
 
 import Data.Maybe (fromMaybe, listToMaybe)
 
+import Control.Concurrent (forkIO)
+import Control.Concurrent.STM (TChan, atomically, newTChan, readTChan, writeTChan)
 import Control.Lens ((^.))
-import Control.Monad (when, unless)
+import Control.Monad (when, unless, forever)
 import Control.Monad.Except (ExceptT, runExceptT, throwError)
+import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans (lift)
+import Control.Monad.Trans.Reader (ReaderT, runReaderT, ask)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Language.Haskell.LSP.Control
 import Language.Haskell.LSP.Core
+import Language.Haskell.LSP.Messages
 import Language.Haskell.LSP.Utility
 import Language.Haskell.LSP.Types
 import Language.Haskell.LSP.Types.Lens
@@ -22,6 +27,12 @@ import System.IO (stdin, stdout)
 data Config = Config
   deriving Show
 
+data ReactorInput = SendMessage FromServerMessage
+
+reactor :: LspFuncs Config -> TChan ReactorInput -> IO ()
+reactor LspFuncs{..} ch = forever . ((liftIO . atomically . readTChan $ ch) >>=) $ \case
+  SendMessage msg -> sendFunc msg
+
 -- InitializeCallbacks
 onInitialConfiguration :: InitializeRequest -> Either Text Config
 onInitialConfiguration m = Right Config
@@ -29,26 +40,36 @@ onInitialConfiguration m = Right Config
 onConfigurationChange :: DidChangeConfigurationNotification -> Either Text Config
 onConfigurationChange _ = Right Config
 
-onStartup :: LspFuncs Config -> IO (Maybe ResponseError)
-onStartup _ = return Nothing
+onStartup :: TChan ReactorInput -> LspFuncs Config -> IO (Maybe ResponseError)
+onStartup ch funcs = do
+  forkIO $ reactor funcs ch
+  return Nothing
 
 -- Handlers
-hoverHandler                                 :: Maybe (Handler HoverRequest)
-hoverHandler                                 = Nothing
+hoverHandler                                 :: TChan ReactorInput -> Handler HoverRequest
+hoverHandler ch req                          = do
+  atomically
+  . writeTChan ch
+  . SendMessage 
+  . RspHover
+  . makeResponseMessage req
+  . Just
+  $ Hover (HoverContents (MarkupContent MkPlainText "Hover text")) Nothing
 
-completionHandler                            :: Maybe (Handler CompletionRequest)
-completionHandler                            = Nothing
+completionHandler                            :: Handler CompletionRequest
+completionHandler req                        = do
+  let ps = req ^. params
+  return ()
 
-completionResolveHandler                     :: Maybe (Handler CompletionItemResolveRequest)
-completionResolveHandler                     = Nothing
+completionResolveHandler                     :: Handler CompletionItemResolveRequest
+completionResolveHandler req                 = do
+  return ()
 
 signatureHelpHandler                         :: Maybe (Handler SignatureHelpRequest)
 signatureHelpHandler                         = Nothing
 
 definitionHandler                            :: Maybe (Handler DefinitionRequest)
-definitionHandler                            = Just \req -> do
-  let _ = req ^. method
-  return ()
+definitionHandler                            = Just (const (return ()))
 
 typeDefinitionHandler                        :: Maybe (Handler TypeDefinitionRequest)
 typeDefinitionHandler                        = Nothing
@@ -92,8 +113,12 @@ documentRangeFormattingHandler               = Nothing
 documentTypeFormattingHandler                :: Maybe (Handler DocumentOnTypeFormattingRequest)
 documentTypeFormattingHandler                = Nothing
 
-renameHandler                                :: Maybe (Handler RenameRequest)
-renameHandler                                = Nothing
+renameHandler                                :: Handler RenameRequest
+renameHandler req                            = do
+  return ()
+
+prepareRenameHandler                         :: Maybe (Handler PrepareRenameRequest)
+prepareRenameHandler                         = Nothing
 
 foldingRangeHandler                          :: Maybe (Handler FoldingRangeRequest)
 foldingRangeHandler                          = Nothing
@@ -133,21 +158,24 @@ didChangeWatchedFilesNotificationHandler     = Nothing
 didChangeWorkspaceFoldersNotificationHandler :: Maybe (Handler DidChangeWorkspaceFoldersNotification)
 didChangeWorkspaceFoldersNotificationHandler = Nothing
 
-initializedHandler                           :: Maybe (Handler InitializedNotification)
-initializedHandler                           = Nothing
+initializedHandler                           :: Handler InitializedNotification
+initializedHandler notif                     =
+  logs $ "Received init: " ++ show notif
 
 willSaveTextDocumentNotificationHandler      :: Maybe (Handler WillSaveTextDocumentNotification)
 willSaveTextDocumentNotificationHandler      = Nothing
 
-cancelNotificationHandler                    :: Maybe (Handler CancelNotification)
-cancelNotificationHandler                    = Nothing
+cancelNotificationHandler                    :: Handler CancelNotification
+cancelNotificationHandler notif              = do
+  return ()
 
-responseHandler                              :: Maybe (Handler BareResponseMessage)
-responseHandler                              = Just \resp -> do
+responseHandler                              :: Handler BareResponseMessage
+responseHandler resp                         =
   logs $ "Received response: " ++ show resp
 
-initializeRequestHandler                     :: Maybe (Handler InitializeRequest)
-initializeRequestHandler                     = Nothing
+initializeRequestHandler                     :: Handler InitializeRequest
+initializeRequestHandler req                 =
+  logs $ "Received init: " ++ show req
 
 exitNotificationHandler                      :: Maybe (Handler ExitNotification)
 exitNotificationHandler                      = Nothing
@@ -162,8 +190,8 @@ customNotificationHandler                    = Nothing
 textDocumentSync                 :: Maybe TextDocumentSyncOptions
 textDocumentSync                 = Nothing
 
-completionProvider               :: Maybe CompletionOptions
-completionProvider               = Nothing
+completionProvider               :: CompletionOptions
+completionProvider               = CompletionOptions (Just False) (Just [])
 
 signatureHelpProvider            :: Maybe SignatureHelpOptions
 signatureHelpProvider            = Nothing
@@ -174,11 +202,17 @@ typeDefinitionProvider           = Nothing
 implementationProvider           :: Maybe GotoOptions
 implementationProvider           = Nothing
 
+codeActionProvider               :: Maybe CodeActionOptions
+codeActionProvider               = Nothing
+
 codeLensProvider                 :: Maybe CodeLensOptions
 codeLensProvider                 = Nothing
 
 documentOnTypeFormattingProvider :: Maybe DocumentOnTypeFormattingOptions
 documentOnTypeFormattingProvider = Nothing
+
+renameProvider                   :: RenameOptions
+renameProvider                   = RenameOptions (Just False)
 
 documentLinkProvider             :: Maybe DocumentLinkOptions
 documentLinkProvider             = Nothing
@@ -195,18 +229,19 @@ executeCommandProvider           = Nothing
 -- Main
 main :: IO ()
 main = do
+  ch <- atomically newTChan
   _ <- runWithHandles
     stdin
     stdout
     InitializeCallbacks
       { onInitialConfiguration = Main.onInitialConfiguration
       , onConfigurationChange  = Main.onConfigurationChange
-      , onStartup              = Main.onStartup
+      , onStartup              = Main.onStartup ch
       }
     Handlers
-      { hoverHandler                                 = Main.hoverHandler
-      , completionHandler                            = Main.completionHandler
-      , completionResolveHandler                     = Main.completionResolveHandler
+      { hoverHandler                                 = Just . Main.hoverHandler $ ch
+      , completionHandler                            = Just Main.completionHandler
+      , completionResolveHandler                     = Just Main.completionResolveHandler
       , signatureHelpHandler                         = Main.signatureHelpHandler
       , definitionHandler                            = Main.definitionHandler
       , typeDefinitionHandler                        = Main.typeDefinitionHandler
@@ -223,7 +258,8 @@ main = do
       , documentFormattingHandler                    = Main.documentFormattingHandler
       , documentRangeFormattingHandler               = Main.documentRangeFormattingHandler
       , documentTypeFormattingHandler                = Main.documentTypeFormattingHandler
-      , renameHandler                                = Main.renameHandler
+      , renameHandler                                = Just Main.renameHandler
+      , prepareRenameHandler                         = Main.prepareRenameHandler
       , foldingRangeHandler                          = Main.foldingRangeHandler
       , documentLinkHandler                          = Main.documentLinkHandler
       , documentLinkResolveHandler                   = Main.documentLinkResolveHandler
@@ -236,23 +272,25 @@ main = do
       , didSaveTextDocumentNotificationHandler       = Main.didSaveTextDocumentNotificationHandler
       , didChangeWatchedFilesNotificationHandler     = Main.didChangeWatchedFilesNotificationHandler
       , didChangeWorkspaceFoldersNotificationHandler = Main.didChangeWorkspaceFoldersNotificationHandler
-      , initializedHandler                           = Main.initializedHandler
+      , initializedHandler                           = Just Main.initializedHandler
       , willSaveTextDocumentNotificationHandler      = Main.willSaveTextDocumentNotificationHandler
-      , cancelNotificationHandler                    = Main.cancelNotificationHandler
-      , responseHandler                              = Main.responseHandler
-      , initializeRequestHandler                     = Main.initializeRequestHandler
+      , cancelNotificationHandler                    = Just Main.cancelNotificationHandler
+      , responseHandler                              = Just Main.responseHandler
+      , initializeRequestHandler                     = Just Main.initializeRequestHandler
       , exitNotificationHandler                      = Main.exitNotificationHandler
       , customRequestHandler                         = Main.customRequestHandler
       , customNotificationHandler                    = Main.customNotificationHandler
       }
     Options
       { textDocumentSync                 = Main.textDocumentSync
-      , completionProvider               = Main.completionProvider
+      , completionProvider               = Just Main.completionProvider
       , signatureHelpProvider            = Main.signatureHelpProvider
       , typeDefinitionProvider           = Main.typeDefinitionProvider
       , implementationProvider           = Main.implementationProvider
+      , codeActionProvider               = Main.codeActionProvider
       , codeLensProvider                 = Main.codeLensProvider
       , documentOnTypeFormattingProvider = Main.documentOnTypeFormattingProvider
+      , renameProvider                   = Just Main.renameProvider
       , documentLinkProvider             = Main.documentLinkProvider
       , colorProvider                    = Main.colorProvider
       , foldingRangeProvider             = Main.foldingRangeProvider
