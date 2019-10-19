@@ -16,7 +16,7 @@ instructions {
 <sub <n>> = 0b0011 ++ <n>
 <ldm <n>> = 0b0100 ++ <n>
 <stm <n>> = 0b0101 ++ <n>
-<jp <n>>  = 0b0110 ++ <n>
+<jp  <n>> = 0b0110 ++ <n>
 <jpz <n>> = 0b0111 ++ <n>
 
 registers {

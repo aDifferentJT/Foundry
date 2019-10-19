@@ -22,12 +22,9 @@ import Utils ((****))
 import Control.Applicative (liftA2)
 
 -- | `AlexPosn' records the location of a token in the input text.  It has three
--- fields: the address (number of characters preceding the token), line number
--- and column of a token within the file. @start_pos@ gives the position of the
--- start of the file and @eof_pos@ a standard encoding for the end of file.
--- @move_pos@ calculates the new position after traversing a given character,
--- assuming the usual eight character tab stops.
-data AlexPosn = AlexPosn !Int !Int !Int -- ^ Construct an `AlexPosn' with @start_pos@, @eof_pos@ and @move_pos@
+-- fields: @address@ (number of characters preceding the token), @line@
+-- and @column@ of a token within the file.
+data AlexPosn = AlexPosn !Int !Int !Int -- ^ Construct an `AlexPosn' with @address@, @line@ and @column@
   deriving (Eq, Ord, Show)
 
 -- | A wrapper for values with a corresponding location in the input stream

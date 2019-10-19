@@ -9,7 +9,7 @@ Licence     : GPL-3
 Maintainer  : jonathan.tanner@sjc.ox.ac.uk
 Stability   : experimental
 -}
-module Parser (parse, parseFile) where
+module Parser (parse', parse, parseFile) where
 
 import ClassyPrelude hiding (readFile)
 
@@ -293,6 +293,10 @@ LedImpls          : leds '{' List(LedImpl) '}'                   { $3 <* $1 <* $
 {
 parseError :: Locatable Token -> ParserMonad a
 parseError = flip throwLocalError "Parse Error"
+
+-- | Parse the given string and return either an error together with a range or a `Proc'
+parse' :: Text -> Either (Text, Maybe (AlexPosn, AlexPosn)) Proc
+parse' = runParser' (fmap locatableValue parseM >>= typeCheck)
 
 -- | Parse the given string and return either a nicely formatted error or a `Proc'
 parse :: Text -> Either Text Proc

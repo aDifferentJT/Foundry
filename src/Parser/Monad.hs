@@ -40,6 +40,7 @@ module Parser.Monad
   , defineEncType
   , getEncType
   , encPrefix
+  , runParser'
   , runParser
   ) where
 

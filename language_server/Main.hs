@@ -1,19 +1,27 @@
-{-# LANGUAGE BlockArguments, LambdaCase, OverloadedStrings, RecordWildCards #-}
+{-# LANGUAGE BlockArguments, LambdaCase, NoImplicitPrelude, OverloadedStrings, RecordWildCards #-}
 
 module Main(main) where
 
-import Parser (parseFile)
+import ClassyPrelude hiding (Handler)
+
+import Parser (parse')
+import Parser.AlexPosn (AlexPosn(AlexPosn))
 
 import Data.Maybe (fromMaybe, listToMaybe)
 
 import Control.Concurrent (forkIO)
-import Control.Concurrent.STM (TChan, atomically, newTChan, readTChan, writeTChan)
+--import Control.Concurrent.STM (TMChan, atomically, newTMChan, readTMChan, writeTMChan)
 import Control.Lens ((^.))
-import Control.Monad (when, unless, forever)
+import Control.Monad (when, unless, forever, void)
 import Control.Monad.Except (ExceptT, runExceptT, throwError)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Reader (ReaderT, runReaderT, ask)
+import Control.Monad.Trans.Maybe (MaybeT(MaybeT), runMaybeT)
+import Data.Either.Combinators (leftToMaybe)
+import qualified Data.Map as Map
+import Data.Rope.UTF16 (toText)
+import Data.SortedList (toSortedList)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Language.Haskell.LSP.Control
@@ -22,16 +30,42 @@ import Language.Haskell.LSP.Messages
 import Language.Haskell.LSP.Utility
 import Language.Haskell.LSP.Types
 import Language.Haskell.LSP.Types.Lens
+import Language.Haskell.LSP.VFS
 import System.IO (stdin, stdout)
 
 data Config = Config
   deriving Show
 
-data ReactorInput = SendMessage FromServerMessage
+data ReactorInput
+  = SendMessage FromServerMessage
+  | ShowDiagnostics Uri
 
-reactor :: LspFuncs Config -> TChan ReactorInput -> IO ()
-reactor LspFuncs{..} ch = forever . ((liftIO . atomically . readTChan $ ch) >>=) $ \case
-  SendMessage msg -> sendFunc msg
+toRange :: (AlexPosn, AlexPosn) -> Range
+toRange (AlexPosn _ l1 c1, AlexPosn _ l2 c2) = Range (Position (l1 - 1) (c1 - 1)) (Position (l2 - 1) (c2 - 1))
+
+reactor :: LspFuncs Config -> TMChan ReactorInput -> IO ()
+reactor LspFuncs{..} ch = forever . ((liftIO . atomically . readTMChan $ ch) >>=) $ \case
+  Just (SendMessage msg) -> sendFunc msg
+  Just (ShowDiagnostics uri) -> void . runMaybeT $ do
+    VirtualFile version rope _ <- MaybeT . getVirtualFileFunc . toNormalizedUri $ uri
+    case parse' . toText $ rope of
+      Right _ -> lift . flushDiagnosticsBySourceFunc 0 . Just $ "Foundry"
+      Left (error, Just range) -> do
+        let ds = Map.fromList
+             [ ( Just "Foundry"
+               , toSortedList
+                 [ Diagnostic
+                     (toRange range)
+                     (Just DsError)
+                     Nothing
+                     (Just "Foundry")
+                     error
+                     Nothing
+                 ]
+               )
+             ]
+        lift . publishDiagnosticsFunc 1 (toNormalizedUri uri) (Just version) $ ds
+  Nothing -> return ()
 
 -- InitializeCallbacks
 onInitialConfiguration :: InitializeRequest -> Either Text Config
@@ -40,16 +74,16 @@ onInitialConfiguration m = Right Config
 onConfigurationChange :: DidChangeConfigurationNotification -> Either Text Config
 onConfigurationChange _ = Right Config
 
-onStartup :: TChan ReactorInput -> LspFuncs Config -> IO (Maybe ResponseError)
+onStartup :: TMChan ReactorInput -> LspFuncs Config -> IO (Maybe ResponseError)
 onStartup ch funcs = do
   forkIO $ reactor funcs ch
   return Nothing
 
 -- Handlers
-hoverHandler                                 :: TChan ReactorInput -> Handler HoverRequest
+hoverHandler                                 :: TMChan ReactorInput -> Handler HoverRequest
 hoverHandler ch req                          = do
   atomically
-  . writeTChan ch
+  . writeTMChan ch
   . SendMessage 
   . RspHover
   . makeResponseMessage req
@@ -138,19 +172,29 @@ willSaveWaitUntilTextDocHandler              = Nothing
 didChangeConfigurationParamsHandler          :: Maybe (Handler DidChangeConfigurationNotification)
 didChangeConfigurationParamsHandler          = Nothing
 
-didOpenTextDocumentNotificationHandler       :: Maybe (Handler DidOpenTextDocumentNotification)
-didOpenTextDocumentNotificationHandler       = Nothing
+didOpenTextDocumentNotificationHandler       :: TMChan ReactorInput -> Handler DidOpenTextDocumentNotification
+didOpenTextDocumentNotificationHandler ch notif =
+  atomically
+  . writeTMChan ch
+  . ShowDiagnostics
+  $ notif ^. params . textDocument . uri
 
-didChangeTextDocumentNotificationHandler     :: Maybe (Handler DidChangeTextDocumentNotification)
-didChangeTextDocumentNotificationHandler     = Nothing
--- ^ Note: If you need to keep track of document changes,
--- "Language.Haskell.LSP.VFS" will take care of these messages for you!
+didChangeTextDocumentNotificationHandler     :: TMChan ReactorInput -> Handler DidChangeTextDocumentNotification
+didChangeTextDocumentNotificationHandler ch notif =
+  atomically
+  . writeTMChan ch
+  . ShowDiagnostics
+  $ notif ^. params . textDocument . uri
 
-didCloseTextDocumentNotificationHandler      :: Maybe (Handler DidCloseTextDocumentNotification)
-didCloseTextDocumentNotificationHandler      = Nothing
+didCloseTextDocumentNotificationHandler      :: TMChan ReactorInput -> Handler DidCloseTextDocumentNotification
+didCloseTextDocumentNotificationHandler ch notif = return ()
 
-didSaveTextDocumentNotificationHandler       :: Maybe (Handler DidSaveTextDocumentNotification)
-didSaveTextDocumentNotificationHandler       = Nothing
+didSaveTextDocumentNotificationHandler       :: TMChan ReactorInput -> Handler DidSaveTextDocumentNotification
+didSaveTextDocumentNotificationHandler ch notif =
+  atomically
+  . writeTMChan ch
+  . ShowDiagnostics
+  $ notif ^. params . textDocument . uri
 
 didChangeWatchedFilesNotificationHandler     :: Maybe (Handler DidChangeWatchedFilesNotification)
 didChangeWatchedFilesNotificationHandler     = Nothing
@@ -187,8 +231,8 @@ customNotificationHandler                    :: Maybe (Handler CustomClientNotif
 customNotificationHandler                    = Nothing
 
 -- Options
-textDocumentSync                 :: Maybe TextDocumentSyncOptions
-textDocumentSync                 = Nothing
+textDocumentSync                 :: TextDocumentSyncOptions
+textDocumentSync                 = TextDocumentSyncOptions (Just True) (Just TdSyncIncremental) (Just False) (Just False) (Just (SaveOptions (Just False)))
 
 completionProvider               :: CompletionOptions
 completionProvider               = CompletionOptions (Just False) (Just [])
@@ -229,7 +273,7 @@ executeCommandProvider           = Nothing
 -- Main
 main :: IO ()
 main = do
-  ch <- atomically newTChan
+  ch <- atomically newTMChan
   _ <- runWithHandles
     stdin
     stdout
@@ -266,10 +310,10 @@ main = do
       , executeCommandHandler                        = Main.executeCommandHandler
       , willSaveWaitUntilTextDocHandler              = Main.willSaveWaitUntilTextDocHandler
       , didChangeConfigurationParamsHandler          = Main.didChangeConfigurationParamsHandler
-      , didOpenTextDocumentNotificationHandler       = Main.didOpenTextDocumentNotificationHandler
-      , didChangeTextDocumentNotificationHandler     = Main.didChangeTextDocumentNotificationHandler
-      , didCloseTextDocumentNotificationHandler      = Main.didCloseTextDocumentNotificationHandler
-      , didSaveTextDocumentNotificationHandler       = Main.didSaveTextDocumentNotificationHandler
+      , didOpenTextDocumentNotificationHandler       = Just . Main.didOpenTextDocumentNotificationHandler $ ch
+      , didChangeTextDocumentNotificationHandler     = Just . Main.didChangeTextDocumentNotificationHandler $ ch
+      , didCloseTextDocumentNotificationHandler      = Just . Main.didCloseTextDocumentNotificationHandler $ ch
+      , didSaveTextDocumentNotificationHandler       = Just . Main.didSaveTextDocumentNotificationHandler $ ch
       , didChangeWatchedFilesNotificationHandler     = Main.didChangeWatchedFilesNotificationHandler
       , didChangeWorkspaceFoldersNotificationHandler = Main.didChangeWorkspaceFoldersNotificationHandler
       , initializedHandler                           = Just Main.initializedHandler
@@ -282,7 +326,7 @@ main = do
       , customNotificationHandler                    = Main.customNotificationHandler
       }
     Options
-      { textDocumentSync                 = Main.textDocumentSync
+      { textDocumentSync                 = Just Main.textDocumentSync
       , completionProvider               = Just Main.completionProvider
       , signatureHelpProvider            = Main.signatureHelpProvider
       , typeDefinitionProvider           = Main.typeDefinitionProvider

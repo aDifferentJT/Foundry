@@ -58,10 +58,15 @@ executables:
     source-dirs:         language_server
     dependencies:
       - Foundry
+      - classy-prelude
+      - containers
+      - either
       - haskell-lsp
       - haskell-lsp-types
       - lens
       - mtl
+      - rope-utf16-splay
+      - sorted-list
       - stm
       - text
       - transformers
