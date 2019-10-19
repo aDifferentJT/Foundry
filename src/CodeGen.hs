@@ -1,3 +1,4 @@
+{-# LANGUAGE NoImplicitPrelude #-}
 {-|
 Module      : CodeGen
 Description : The code generation module
@@ -10,12 +11,14 @@ module CodeGen
   ( genCode
   ) where
 
+import ClassyPrelude
+
 import Proc (Proc)
 import Verilog.GenAST (genAST)
 import Verilog.Optimiser (optimise)
 import Verilog.Output (output)
 
 -- | Generate the verilog code for the given processor
-genCode :: Proc -> String
+genCode :: Proc -> Text
 genCode = output 0 . optimise . genAST
 

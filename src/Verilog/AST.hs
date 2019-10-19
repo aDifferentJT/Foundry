@@ -1,3 +1,4 @@
+{-# LANGUAGE NoImplicitPrelude #-}
 {-|
 Module      : Verilog.AST
 Description : An AST for Verilog
@@ -11,30 +12,32 @@ module Verilog.AST
   , Expr(..)
   ) where
 
+import ClassyPrelude
+
 import Utils (Bit)
 
 data Verilog
-  = RawVerilog String
-  | Comment String
+  = RawVerilog Text
+  | Comment Text
   | Seq [Verilog]
-  | Include String
-  | Define String [String] String
-  | Module String [String] Verilog
-  | Wire Int String (Maybe Int) (Maybe Expr)
-  | Reg Int String (Maybe Int) (Maybe Expr)
-  | Always String [(Maybe Expr, Expr, Expr)]
+  | Include Text
+  | Define Text [Text] Text
+  | Module Text [Text] Verilog
+  | Wire Int Text (Maybe Int) (Maybe Expr)
+  | Reg Int Text (Maybe Int) (Maybe Expr)
+  | Always Text [(Maybe Expr, Expr, Expr)]
   | Assign Expr Expr
 
 data Expr
-  = RawExpr String
+  = RawExpr Text
   | Literal Int
-  | Variable String
+  | Variable Text
   | Bits [Bit]
-  | UnaryOp String Expr
-  | BinaryOp Expr String Expr
+  | UnaryOp Text Expr
+  | BinaryOp Expr Text Expr
   | TernaryOp Expr Expr Expr
   | MultiCond Expr [(Expr, Expr)]
-  | FoldR String Expr [Expr]
+  | FoldR Text Expr [Expr]
   | UndefinedBehaviour
   deriving (Eq, Ord)
 

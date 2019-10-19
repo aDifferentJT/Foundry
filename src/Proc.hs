@@ -1,3 +1,4 @@
+{-# LANGUAGE NoImplicitPrelude #-}
 {-|
 Module      : Proc
 Description : The data structure representing a processor
@@ -27,6 +28,8 @@ module Proc
   , Proc(..)
   ) where
 
+import ClassyPrelude
+
 import Utils (Bit)
 
 -- | The types supported by the type system
@@ -44,7 +47,7 @@ data EncType = EncType Type Int
 -- | An expression for some bits
 data BitsExpr
   = ConstBitsExpr [Bit]                  -- ^ A constant array of bits
-  | EncBitsExpr Int String               -- ^ The encoding of a variable with given width and identifier
+  | EncBitsExpr Int Text                 -- ^ The encoding of a variable with given width and identifier
   | ConcatBitsExpr Int BitsExpr BitsExpr -- ^ Two expressions of bits concatenated with the width
   | AndBitsExpr Int BitsExpr BitsExpr    -- ^ Two expressions of bits combined with a bitwise and operation with the width
   | OrBitsExpr Int BitsExpr BitsExpr     -- ^ Two expressions of bits combined with a bitwise or operation with the width
@@ -61,7 +64,7 @@ sizeOfEnc (OrBitsExpr     n _ _) = n
 sizeOfEnc (XorBitsExpr    n _ _) = n
 
 -- | Return the range of bits representing a given variable in the expression 
-findVarInEnc :: String           -- ^ The identifier of the variable
+findVarInEnc :: Text             -- ^ The identifier of the variable
              -> Int              -- ^ The starting index in the expression
              -> BitsExpr         -- ^ The expression
              -> Maybe (Int, Int) -- ^ The range of bits (inclusive) representing @var@
@@ -99,9 +102,9 @@ data BoolExpr
 
 -- | An expression
 data Expr
-  = VarExpr String                 -- ^ An expression representing a variable
-  | RegExpr String                 -- ^ An expression representing the value in a register
-  | MemAccessExpr String Expr      -- ^ An access into memory
+  = VarExpr Text                   -- ^ An expression representing a variable
+  | RegExpr Text                   -- ^ An expression representing the value in a register
+  | MemAccessExpr Text Expr        -- ^ An access into memory
   | ConstExpr Int                  -- ^ A constant
   | BinaryConstExpr [Bit]          -- ^ A binary constant (some bits)
   | OpExpr Op Expr Expr            -- ^ A binary operation
@@ -110,9 +113,9 @@ data Expr
 
 -- | An expression into which we can assign a value
 data LValue
-  = VarLValue String            -- ^ An expression representing a variable, this should be a register variable
-  | RegLValue String            -- ^ An expression representing a register
-  | MemAccessLValue String Expr -- ^ An expression representing a memory location
+  = VarLValue Text              -- ^ An expression representing a variable, this should be a register variable
+  | RegLValue Text              -- ^ An expression representing a register
+  | MemAccessLValue Text Expr   -- ^ An expression representing a memory location
   deriving Show
 
 -- | A rule for assigning a new value to an lvalue
@@ -124,19 +127,19 @@ data LedImpl = LedImpl Int Int Expr
   deriving Show
 
 -- | A register definition, with identifier, width and possibly an encoding
-data Reg = Reg String Int (Maybe [Bit])
+data Reg = Reg Text Int (Maybe [Bit])
   deriving Show
 
 -- | An instruction definition, with identifier, argument types, implementation rules and an encoding
-data Inst = Inst String [Type] ([String], [ImplRule]) ([String], ([Bit], BitsExpr))
+data Inst = Inst Text [Type] ([Text], [ImplRule]) ([Text], ([Bit], BitsExpr))
   deriving Show
 
 -- | A button definition, with identifier, physical index and implementation rules
-data Button = Button String Int [ImplRule]
+data Button = Button Text Int [ImplRule]
   deriving Show
 
 -- | A memory definition, with identifier, data width and address width
-data Memory = Memory String Int Int
+data Memory = Memory Text Int Int
   deriving Show
 
 -- | A processor definition

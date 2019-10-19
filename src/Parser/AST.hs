@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE NoImplicitPrelude, TemplateHaskell #-}
 
 {-|
 Module      : Parser.AST
@@ -40,6 +40,8 @@ module Parser.AST
   , rawLedImpls
   ) where
 
+import ClassyPrelude
+
 import Proc
 
 import Utils (Bit)
@@ -47,27 +49,27 @@ import Utils (Bit)
 import Control.Lens (makeLenses)
 
 -- | A declaration of the width of a register
-data RegType = RegType String Int
+data RegType = RegType Text Int
   deriving Show
 
 -- | A declaration of the arguments of an instruction
-data InstType = InstType String [Type]
+data InstType = InstType Text [Type]
   deriving Show
 
 -- | A declaration of the physical index of a button
-data ButtonType = ButtonType String Int
+data ButtonType = ButtonType Text Int
   deriving Show
 
 -- | A definition of an encoding of a register or an instruction
 data Enc
-  = RegEnc String [Bit]
-  | InstEnc String [String] ([Bit], BitsExpr)
+  = RegEnc Text [Bit]
+  | InstEnc Text [Text] ([Bit], BitsExpr)
   deriving Show
 
 -- | A definition of an implementation of an instruction or a button
 data Impl
-  = InstImpl String [String] [ImplRule]
-  | ButtonImpl String [ImplRule]
+  = InstImpl Text [Text] [ImplRule]
+  | ButtonImpl Text [ImplRule]
   deriving Show
 
 -- | A data structure built by a single pass through the file

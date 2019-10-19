@@ -1,4 +1,4 @@
-{-# LANGUAGE ExistentialQuantification, FlexibleInstances, GADTs, RankNTypes #-}
+{-# LANGUAGE ExistentialQuantification, FlexibleInstances, GADTs, NoImplicitPrelude, OverloadedStrings, RankNTypes #-}
 
 {-|
 Module      : Assembler.C.AST
@@ -11,12 +11,16 @@ Stability   : experimental
 module Assembler.C.AST
   where
 
-import Data.List (intercalate)
+import Data.List.NonEmpty (NonEmpty)
+import qualified Data.List.NonEmpty as NonEmpty
 import Data.List.Split (splitOn)
+import Data.Text (Text)
+import qualified Data.Text as Text
 
+import ClassyPrelude
 import Utils (mapHead, joinTailsToHeads)
 
-type CIdent = String
+type CIdent = Text
 
 class Pretty a => CType a
 
@@ -36,7 +40,7 @@ data CExprRaw where
   CTernOp  :: (CExpr c, CExpr e1, CExpr e2) => c -> e1 -> e2 -> CExprRaw
   CMember  :: CExpr e => e -> CIdent -> CExprRaw
   CArrow   :: CExpr e => e -> CIdent -> CExprRaw
-  CString  :: String -> CExprRaw
+  CString  :: Text -> CExprRaw
   CIndex   :: CExpr e => e -> Int -> CExprRaw
   AnyCExpr :: CExpr e => e -> CExprRaw
 
@@ -72,10 +76,10 @@ e !: es = AnyCExpr e : es
 class Pretty a => CStmt a
 
 data CStmtRaw where
-  CLocalInclude  :: String -> CStmtRaw
-  CGlobalInclude :: String -> CStmtRaw
-  CDefine        :: CExpr e => String -> e -> CStmtRaw
-  CUndefine      :: String -> CStmtRaw
+  CLocalInclude  :: Text -> CStmtRaw
+  CGlobalInclude :: Text -> CStmtRaw
+  CDefine        :: CExpr e => Text -> e -> CStmtRaw
+  CUndefine      :: Text -> CStmtRaw
   CAssign        :: (CExpr e1, CExpr e2) => e1 -> e2 -> CStmtRaw
   CTopExpr       :: CExpr e => e -> CStmtRaw
   CDecl          :: (CType t, CExpr e) => t -> CIdent -> Maybe e -> CStmtRaw
@@ -85,7 +89,7 @@ data CStmtRaw where
   CReturn        :: CExpr e => e -> CStmtRaw
   CBreak         :: CStmtRaw
   CContinue      :: CStmtRaw
-  CComment       :: CStmt s => s -> String -> CStmtRaw
+  CComment       :: CStmt s => s -> Text -> CStmtRaw
   CBlankLine     :: CStmtRaw
   CNonStmt       :: CStmtRaw
   AnyCStmt       :: CStmt s => s -> CStmtRaw
@@ -118,11 +122,11 @@ cStmts = cStmtsRev []
 -- MARK: PRETTY
 
 class Pretty a where
-  pretty :: a -> String
+  pretty :: a -> Text
   pretty = intercalate "\n" . prettyLines
 
-  prettyLines :: a -> [String]
-  prettyLines = splitOn "\n" . pretty
+  prettyLines :: a -> [Text]
+  prettyLines = Text.splitOn "\n" . pretty
 
 instance Pretty CTypeRaw where
   pretty (CPtr t)     = pretty t ++ "*"
@@ -132,7 +136,7 @@ instance Pretty CIdent where
   pretty = id
 
 instance Pretty Int where
-  pretty = show
+  pretty = tshow
 
 instance Pretty CExprRaw where
   pretty (CParen e)        = "(" ++ pretty e ++ ")"
@@ -141,8 +145,8 @@ instance Pretty CExprRaw where
   pretty (CTernOp c e1 e2) = pretty c ++ " ? " ++ pretty e1 ++ " : " ++ pretty e2
   pretty (CMember e i)     = pretty e ++ "." ++ i
   pretty (CArrow e i)      = pretty e ++ "->" ++ i
-  pretty (CString s)       = show s
-  pretty (CIndex e i)      = pretty e ++ "[" ++ show i ++ "]"
+  pretty (CString s)       = tshow s
+  pretty (CIndex e i)      = pretty e ++ "[" ++ tshow i ++ "]"
   pretty (AnyCExpr e)      = pretty e
 
 instance Pretty CFuncCall where
@@ -158,7 +162,7 @@ instance Pretty CStmtRaw where
   prettyLines (CDecl t i e)      = [pretty t ++ " " ++ i ++ maybe "" ((" = " ++) . pretty) e ++ ";"]
   prettyLines (CIf is e)
     = joinTailsToHeads " else "
-      ( [mapHead (("if " ++) . (pretty (CParen c) ++) . (" " ++)) (prettyLines b) | (c, b) <- is]
+      ( map (\(c, b) -> mapHead (("if " ++) . (pretty (CParen c) ++) . (" " ++)) (prettyLines b)) is
       ++ maybe [] ((:[]) . prettyLines) e
       )
   prettyLines (CSwitch c b)      = mapHead (("switch " ++) . (pretty (CParen c) ++) . (" " ++)) (prettyLines b)
@@ -168,8 +172,8 @@ instance Pretty CStmtRaw where
   prettyLines  CContinue         = ["continue;"]
   prettyLines (CComment s c)     =
     let ls = prettyLines s in
-    let n = maximum . map length $ ls in
-    [l ++ replicate (n - length l) ' ' ++ " // " ++ c | l <- ls]
+    let n = maximum . ncons 0 . map length $ ls in
+    [l ++ Text.replicate (n - length l) " " ++ " // " ++ c | l <- ls]
   prettyLines  CBlankLine        = [""]
   prettyLines  CNonStmt          = []
   prettyLines (AnyCStmt s)       = prettyLines s

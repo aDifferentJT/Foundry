@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards, FlexibleInstances, MultiParamTypeClasses, UndecidableInstances #-}
+{-# LANGUAGE NoImplicitPrelude, RecordWildCards, FlexibleInstances, MultiParamTypeClasses, UndecidableInstances #-}
 
 {-|
 Module      : Parser.AlexPosn
@@ -14,6 +14,8 @@ module Parser.AlexPosn
   ( AlexPosn(AlexPosn)
   , Locatable(Locatable, locatableValue, locatablePosns)
   ) where
+
+import ClassyPrelude
 
 import Utils ((****))
 

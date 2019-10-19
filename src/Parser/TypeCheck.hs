@@ -1,6 +1,8 @@
-{-# LANGUAGE LambdaCase, RecordWildCards #-}
+{-# LANGUAGE LambdaCase, NoImplicitPrelude, OverloadedStrings, RecordWildCards #-}
 
 module Parser.TypeCheck (typeCheck) where
+
+import ClassyPrelude
 
 import Parser.AST
 import Parser.Monad

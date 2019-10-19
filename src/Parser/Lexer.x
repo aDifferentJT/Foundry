@@ -1,6 +1,6 @@
 {
 {-# OPTIONS_GHC -w #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE NoImplicitPrelude, OverloadedStrings, RecordWildCards #-}
 
 {-|
 Module      : Parser.Lexer
@@ -15,12 +15,16 @@ module Parser.Lexer
   , readToken
   ) where
 
+import ClassyPrelude
+
+import qualified Control.Monad.Trans.State as State
+import qualified Data.Text as Text
+import Text.Read (read)
+
 import Parser.AlexPosn (AlexPosn, Locatable(Locatable))
 import Parser.Monad
 
 import Utils (Bit(..))
-
-import qualified Control.Monad.Trans.State as State
 }
 
 $digit = 0-9       -- digits
@@ -29,7 +33,6 @@ $lower = [a-z]     -- lower case characters
 $upper = [A-Z]     -- upper case characters
 
 tokens :-
-
   $white+    ;
   "--".*     ;
   registers                   { wrapPlainToken Registers }
@@ -62,8 +65,8 @@ tokens :-
   \)                          { wrapPlainToken CloseParen }
   \[                          { wrapPlainToken OpenSquare }
   \]                          { wrapPlainToken CloseSquare }
-  0b[01]+                     { wrapFuncToken $ Bits . ((map (read . (:[])) . drop 2) <$>) }
-  $digit+                     { wrapFuncToken $ Int . (read <$>) }
+  0b[01]+                     { wrapFuncToken $ Bits . ((map (read . (:[])) . unpack . Text.drop 2) <$>) }
+  $digit+                     { wrapFuncToken $ Int . (read . unpack <$>) }
   $lower [$alpha $digit \_]*  { wrapFuncToken VarTok }
   Reg                         { wrapPlainToken RegTok }
   Bits                        { wrapPlainToken BitsTok }
@@ -76,46 +79,46 @@ tokens :-
 {
 -- | The tokens to lex
 data Token
-  = Registers                 -- ^ @registers@
-  | Instructions              -- ^ @instructions@
-  | Buttons                   -- ^ @buttons@
-  | MemoryTok                 -- ^ @memory@
-  | LedsTok                   -- ^ @leds@
-  | LedTok                    -- ^ @led@
-  | Colon                     -- ^ @:@
-  | Hyphen                    -- ^ @-@
-  | Equals                    -- ^ @=@
-  | Plus                      -- ^ @+@
-  | Times                     -- ^ @*@
-  | Slash                     -- ^ @/@
-  | And                       -- ^ @&@
-  | Or                        -- ^ @|@
-  | Xor                       -- ^ @^@
-  | Concat                    -- ^ @++@
-  | Equality                  -- ^ @==@
-  | Inequality                -- ^ @!=@
-  | LogicalAnd                -- ^ @&&@
-  | LogicalOr                 -- ^ @||@
-  | Question                  -- ^ @?@
-  | LeftArrow                 -- ^ @<-@
-  | OpenAngle                 -- ^ @<@
-  | CloseAngle                -- ^ @>@
-  | OpenCurly                 -- ^ @{@
-  | CloseCurly                -- ^ @}@
-  | OpenParen                 -- ^ @(@
-  | CloseParen                -- ^ @)@
-  | OpenSquare                -- ^ @[@
-  | CloseSquare               -- ^ @]@
-  | Bits (Locatable [Bit])    -- ^ A binary literal
-  | Int (Locatable Int)       -- ^ An integer
-  | VarTok (Locatable String) -- ^ An identifier starting with a lower case letter
-  | RegTok                    -- ^ @Reg@
-  | BitsTok                   -- ^ @Bits@
-  | IntTok                    -- ^ @Int@
-  | InstTok                   -- ^ @Inst@
-  | ButtonTok                 -- ^ @Button@
-  | RAMTok                    -- ^ @RAM@
-  | EOF                       -- ^ The end of the file
+  = Registers               -- ^ @registers@
+  | Instructions            -- ^ @instructions@
+  | Buttons                 -- ^ @buttons@
+  | MemoryTok               -- ^ @memory@
+  | LedsTok                 -- ^ @leds@
+  | LedTok                  -- ^ @led@
+  | Colon                   -- ^ @:@
+  | Hyphen                  -- ^ @-@
+  | Equals                  -- ^ @=@
+  | Plus                    -- ^ @+@
+  | Times                   -- ^ @*@
+  | Slash                   -- ^ @/@
+  | And                     -- ^ @&@
+  | Or                      -- ^ @|@
+  | Xor                     -- ^ @^@
+  | Concat                  -- ^ @++@
+  | Equality                -- ^ @==@
+  | Inequality              -- ^ @!=@
+  | LogicalAnd              -- ^ @&&@
+  | LogicalOr               -- ^ @||@
+  | Question                -- ^ @?@
+  | LeftArrow               -- ^ @<-@
+  | OpenAngle               -- ^ @<@
+  | CloseAngle              -- ^ @>@
+  | OpenCurly               -- ^ @{@
+  | CloseCurly              -- ^ @}@
+  | OpenParen               -- ^ @(@
+  | CloseParen              -- ^ @)@
+  | OpenSquare              -- ^ @[@
+  | CloseSquare             -- ^ @]@
+  | Bits (Locatable [Bit])  -- ^ A binary literal
+  | Int (Locatable Int)     -- ^ An integer
+  | VarTok (Locatable Text) -- ^ An identifier starting with a lower case letter
+  | RegTok                  -- ^ @Reg@
+  | BitsTok                 -- ^ @Bits@
+  | IntTok                  -- ^ @Int@
+  | InstTok                 -- ^ @Inst@
+  | ButtonTok               -- ^ @Button@
+  | RAMTok                  -- ^ @RAM@
+  | EOF                     -- ^ The end of the file
   deriving (Show)
 
 wrapFuncToken :: (Locatable b -> a) -> b -> (AlexPosn, AlexPosn) -> ParserMonad (Locatable a)
@@ -133,11 +136,11 @@ readToken = do
       return . Locatable EOF . Just $ (charPos stateInput, charPos stateInput)
     AlexError input'       -> do
       State.put ParserState{ stateInput = input', .. }
-      throwLocalErrorAt (charPos stateInput, alexMove (charPos input') (head . str $ input')) "Could not lex token"
+      throwLocalErrorAt (charPos stateInput, alexMove (charPos input') (Text.head . str $ input')) "Could not lex token"
     AlexSkip input' _      -> do
       State.put ParserState{ stateInput = input', .. }
       readToken
     AlexToken input' len t -> do
       State.put ParserState{ stateInput = input', .. }
-      (t . take len . str $ stateInput) (charPos stateInput, charPos input')
+      (t . Text.take len . str $ stateInput) (charPos stateInput, charPos input')
 }

@@ -1,4 +1,4 @@
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE LambdaCase, NoImplicitPrelude #-}
 
 {-|
 Module      : Utils
@@ -27,13 +27,15 @@ module Utils
   , joinTailsToHeads
   ) where
 
-import Control.Arrow (first, (***))
+import Control.Arrow ((***))
 import Data.Bits (shiftL, shiftR, (.&.), (.|.))
-import Data.List (sortBy, unfoldr)
+import Data.List (foldl, sortBy, unfoldr)
 import qualified Data.Map as Map
 
 import qualified Text.ParserCombinators.ReadPrec as ReadPrec
 import Text.Read (readPrec)
+
+import ClassyPrelude
 
 -- | A single bit
 data Bit
@@ -88,11 +90,6 @@ mapInitLast :: (a -> b) -> (a -> b) -> [a] -> [b]
 mapInitLast _ _ []     = []
 mapInitLast _ g [x]    = [g x]
 mapInitLast f g (x:xs) = f x : mapInitLast f g xs
-
--- | Sort the list by running the function
--- note that this doesn't cache the function so it should be cheap
-sortWith :: Ord b => (a -> b) -> [a] -> [a]
-sortWith f = sortBy (\x y -> compare (f x) (f y))
 
 -- | Group the elements by their image under the function
 groupWith :: Ord b => (a -> b) -> [a] -> [(b, [a])]
@@ -200,8 +197,7 @@ zip3By' f g h (x:xs) (y:ys) (z:zs) = case compare3 (f x) (g y) (h z) of
        -> (c, c')          -- ^ \((f(x_1, x_2), g(x_1, x_2))\)
 f **** g = uncurry (***) . (f *** g)
 
-joinTailsToHeads :: [a] -> [[[a]]] -> [[a]]
-joinTailsToHeads _ []         = []
-joinTailsToHeads _ [xs]       = xs
-joinTailsToHeads y (x1:x2:xs) = mapLast ((++ head x2) . (++ y)) x1 ++ joinTailsToHeads y (tail x2 : xs)
+joinTailsToHeads :: Monoid m => m -> [[m]] -> [m]
+joinTailsToHeads _ [x]        = x
+joinTailsToHeads y (x1:x2:xs) = mapLast ((++ (fromMaybe mempty . headMay $ x2)) . (++ y)) x1 ++ joinTailsToHeads y ((fromMaybe mempty . tailMay $ x2) : xs)
 

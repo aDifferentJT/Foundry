@@ -1,5 +1,5 @@
 {
-{-# LANGUAGE RecordWildCards, LambdaCase #-}
+{-# LANGUAGE NoImplicitPrelude, OverloadedStrings, RecordWildCards, LambdaCase #-}
 
 {-|
 Module      : Parser
@@ -10,6 +10,8 @@ Maintainer  : jonathan.tanner@sjc.ox.ac.uk
 Stability   : experimental
 -}
 module Parser (parse, parseFile) where
+
+import ClassyPrelude hiding (readFile)
 
 import Parser.AST
 import Parser.AlexPosn
@@ -25,7 +27,8 @@ import Control.Monad.Trans (lift)
 import Control.Monad (unless)
 import Control.Monad.Except (ExceptT(ExceptT))
 import qualified Control.Monad.Trans.State as State
-import Data.List(intercalate)
+import Data.List ((!!))
+import Data.Text.IO (readFile)
 }
 
 %name parseM
@@ -96,7 +99,7 @@ RawProc           : {- empty -}                                  { pure $ initia
                   | Impl RawProc                                 { over rawImpls    `fmap` (fmap (:) $1) <*> $2 }
                   | LedImpls RawProc                             { over rawLedImpls `fmap` (fmap (:) $1) <*> $2 }
 
-Var               :: { Locatable String }
+Var               :: { Locatable Text }
 Var               : varTok                                       { $1 }
 
 Type              :: { Locatable Type }
@@ -116,21 +119,21 @@ BitsExpr          : '(' BitsExpr ')'                             { $2 }
   do
     let n1 = sizeOfEnc . locatableValue $ $1
     let n2 = sizeOfEnc . locatableValue $ $3
-    unless (n1 == n2) $ throwLocalError (liftA2 (,) $1 $3) $ "Mismatched dimensions of bitwise and: Bits " ++ show n1 ++ " and Bits " ++ show n2
+    unless (n1 == n2) $ throwLocalError (liftA2 (,) $1 $3) $ "Mismatched dimensions of bitwise and: Bits " ++ tshow n1 ++ " and Bits " ++ tshow n2
     return $ AndBitsExpr (n1 + n2) `fmap` $1 <*> $3
 }
                   | BitsExpr '|' BitsExpr                        {%
   do
     let n1 = sizeOfEnc . locatableValue $ $1
     let n2 = sizeOfEnc . locatableValue $ $3
-    unless (n1 == n2) $ throwLocalError (liftA2 (,) $1 $3) $ "Mismatched dimensions of bitwise or: Bits " ++ show n1 ++ " and Bits " ++ show n2
+    unless (n1 == n2) $ throwLocalError (liftA2 (,) $1 $3) $ "Mismatched dimensions of bitwise or: Bits " ++ tshow n1 ++ " and Bits " ++ tshow n2
     return $ OrBitsExpr (n1 + n2) `fmap` $1 <*> $3
 }
                   | BitsExpr '^' BitsExpr                        {%
   do
     let n1 = sizeOfEnc . locatableValue $ $1
     let n2 = sizeOfEnc . locatableValue $ $3
-    unless (n1 == n2) $ throwLocalError (liftA2 (,) $1 $3) $ "Mismatched dimensions of bitwise exclusive or: Bits " ++ show n1 ++ " and Bits " ++ show n2
+    unless (n1 == n2) $ throwLocalError (liftA2 (,) $1 $3) $ "Mismatched dimensions of bitwise exclusive or: Bits " ++ tshow n1 ++ " and Bits " ++ tshow n2
     return $ XorBitsExpr (n1 + n2) `fmap` $1 <*> $3
 }
 
@@ -168,11 +171,11 @@ MemoryTypes       : memory '{' List(MemoryType) '}'              { $3 }
 EncType           :: { Locatable EncType }
 EncType           : '<' Type '>' ':' bitsT int                   {% fmap (<* $1) $ defineEncType $2 $6 }
 
-ArgList           :: { Locatable [Locatable String] }
+ArgList           :: { Locatable [Locatable Text] }
 ArgList           : {- empty -}                                  { pure [] }
 ArgList           : ArgList '<' Var '>'                          { ($3:) `fmap` $1 <* $2 <* $4 }
 
-VarWithArgs       :: { (Locatable String, Locatable Defn, Locatable [String]) }
+VarWithArgs       :: { (Locatable Text, Locatable Defn, Locatable [Text]) }
 VarWithArgs       : Var ArgList                                  {%
   do
     defn <- getIdentifierDefn $1
@@ -181,7 +184,7 @@ VarWithArgs       : Var ArgList                                  {%
         unless (null . locatableValue $ $2) . throwLocalError $2 $ "Register " ++ locatableValue $1 ++ " has arguments"
         return ($1, defn, pure [])
       InstDefn ts    -> do
-        unless (length ts == (length . locatableValue $ $2)) . throwLocalError $2 $ "Instruction " ++ locatableValue $1 ++ " has " ++ show (length . locatableValue $ $2) ++ " arguments, expected " ++ show (length ts)
+        unless (length ts == (length . locatableValue $ $2)) . throwLocalError $2 $ "Instruction " ++ locatableValue $1 ++ " has " ++ tshow (length . locatableValue $ $2) ++ " arguments, expected " ++ tshow (length ts)
         vs <- fmap sequenceA . sequence . map (uncurry defineLocalVar) . flip zip ts . reverse . locatableValue $ $2
         return ($1, defn, vs)
       ButtonDefn     -> do
@@ -203,14 +206,14 @@ Enc               : '<' VarWithArgs '>' '=' BitsExpr             {% fmap (<* $1)
           ConstBitsExpr bs -> do
             d1 <- getEncType $ Locatable (RegT n) ps
             let d2 = length bs
-            unless (d1 == d2) . throwLocalError $5 $ "<" ++ locatableValue var ++ "> is of type Bits " ++ show d2 ++ " but I expected Bits " ++ show d1
+            unless (d1 == d2) . throwLocalError $5 $ "<" ++ locatableValue var ++ "> is of type Bits " ++ tshow d2 ++ " but I expected Bits " ++ tshow d1
             return $ RegEnc `fmap` var <*> pure bs <* $1 <* $5
           _                -> throwLocalError $5 $ "Encoding for register " ++ locatableValue var ++ " is not constant"
       Locatable (InstDefn ts)   ps -> do
         d1 <- getEncType $ Locatable InstT ps
         let d2 = sizeOfEnc . locatableValue $ $5
         e <- encPrefix $5
-        unless (d1 == d2) . throwLocalError $5 $ "<" ++ intercalate " " (locatableValue var : ["<" ++ v ++ ">" | v <- locatableValue args]) ++ "> is of type Bits " ++ show d2 ++ " but I expected Bits " ++ show d1
+        unless (d1 == d2) . throwLocalError $5 $ "<" ++ intercalate " " (locatableValue var : ["<" ++ v ++ ">" | v <- locatableValue args]) ++ "> is of type Bits " ++ tshow d2 ++ " but I expected Bits " ++ tshow d1
         return $ InstEnc `fmap` var <*> args <*> e <* $1
       Locatable  ButtonDefn      _ -> throwLocalError var $ "Encoding given for button " ++ locatableValue var
       Locatable (MemoryDefn _ _) _ -> throwLocalError var $ "Encoding given for memory " ++ locatableValue var
@@ -292,10 +295,10 @@ parseError :: Locatable Token -> ParserMonad a
 parseError = flip throwLocalError "Parse Error"
 
 -- | Parse the given string and return either a nicely formatted error or a `Proc'
-parse :: String -> Either String Proc
+parse :: Text -> Either Text Proc
 parse = runParser (fmap locatableValue parseM >>= typeCheck)
 
 -- | Parse the given file and return either a nicely formatted error or a `Proc'
-parseFile :: FilePath -> ExceptT String IO Proc
+parseFile :: FilePath -> ExceptT Text IO Proc
 parseFile = ExceptT . fmap parse . readFile
 }

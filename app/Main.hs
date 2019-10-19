@@ -1,6 +1,8 @@
-{-# LANGUAGE LambdaCase, RecordWildCards #-}
+{-# LANGUAGE LambdaCase, NoImplicitPrelude, OverloadedStrings, RecordWildCards #-}
 
 module Main(main) where
+
+import ClassyPrelude hiding (getArgs)
 
 import Parser (parseFile)
 import CodeGen (genCode)
@@ -23,14 +25,14 @@ main = runExceptT
   ( do
     Options{..} <- getOpts
     ast <- parseFile fn
-    lift . writeFile (fn -<.> ".v") . genCode $ ast
+    lift . writeFileUtf8 (fn -<.> ".v") . genCode $ ast
     when shouldGenAssembler . lift . genAssembler (dropExtensions . replaceBaseName fn $ (takeBaseName fn ++ "_assembler")) $ ast
   ) >>= \case
     Left err -> putStrLn err
     Right () -> return ()
 
 data Options = Options
-  { fn :: String
+  { fn :: FilePath
   , shouldGenAssembler :: Bool
   , showHelp :: Bool
   }
@@ -47,7 +49,7 @@ options =
   , Option ['h'] ["help"] (NoArg $ \o -> o { showHelp = True }) "Print this help message"
   ]
 
-getOpts :: ExceptT String IO Options
+getOpts :: ExceptT Text IO Options
 getOpts = lift (getOpt Permute options <$> getArgs) >>= \case
   (fs, [fn'], []) -> do
     let Options{..} = foldr ($) (defaultOptions { fn = fn' }) fs

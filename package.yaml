@@ -28,13 +28,16 @@ library:
     - happy
   dependencies:
     - array
+    - classy-prelude
     - containers
     - filepath
     - lens
+    - mono-traversable
     - mtl
     - process
     - split
     - temporary
+    - text
     - transformers
 
 executables:
@@ -47,6 +50,7 @@ executables:
       - -with-rtsopts=-N
     dependencies:
       - Foundry
+      - classy-prelude
       - filepath
       - mtl
   Foundry-Language-Server-exe:
@@ -78,6 +82,7 @@ tests:
       - -with-rtsopts=-N
     dependencies:
       - Foundry
+      - classy-prelude
   CodeGen-test:
     main:                test/CodeGen.hs
     ghc-options:
@@ -86,6 +91,7 @@ tests:
       - -with-rtsopts=-N
     dependencies:
       - Foundry
+      - classy-prelude
   HLint-test:
     main:                test/HLint.hs
     dependencies:

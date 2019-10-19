@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards, TupleSections #-}
+{-# LANGUAGE NoImplicitPrelude, OverloadedStrings, RecordWildCards, TupleSections #-}
 
 {-|
 Module      : Verilog.GenAST
@@ -12,47 +12,32 @@ module Verilog.GenAST
   ( genAST
   ) where
 
+import ClassyPrelude
+
 import Proc
 import qualified Verilog.AST as V
+import Verilog.Align
 import Utils (Bit(..), Endianness(Little), bitsToInt, groupWith)
 
-import Control.Arrow (first)
-import Data.List (group, intercalate, sort, transpose)
+import Data.List (transpose)
 import Data.Maybe (mapMaybe, maybeToList)
-
-padRightTo :: Int -> a -> [a] -> [a]
-padRightTo n x  []    = replicate n x
-padRightTo n x (y:ys) = y : padRightTo (n - 1) x ys
-
-align' :: [Int] -> a -> [a] -> [[a]] -> [a]
-align'  _     _ _    []    = []
-align'  _     _ _    [s]   = s
-align' (n:ns) p sep (s:ss) = padRightTo n p s ++ sep ++ align' ns p sep ss
-align'  []    _ _   (_:_)  = error "ns shorter than ss"
+import qualified Data.Set as Set (fromList, toList)
 
 combineBlocks :: [a -> V.Verilog] -> a -> V.Verilog
 combineBlocks fs = V.Seq . flip fmap fs . flip ($)
 
-alignLines' :: a -> [a] -> [[[a]]] -> [[a]]
-alignLines' p colSep ls = map (align' indents p colSep) ls
-  where indents :: [Int]
-        indents = map (maximum . map length) . transpose $ ls
-
-combineLines' :: a -> [a] -> [a] -> [[[a]]] -> [a]
-combineLines' p colSep lineSep = intercalate lineSep . alignLines' p colSep
-
-genBits :: [Bit] -> String
-genBits bs = (show . length $ bs) ++ "'b" ++ concatMap show bs
+genBits :: [Bit] -> Text
+genBits bs = (tshow . length $ bs) ++ "'b" ++ concatMap tshow bs
 
 genInstDef :: Inst -> V.Verilog
 genInstDef (Inst n _ _ (_, (bs, _))) = V.Define ("is_inst_" ++ n) ["inst"]
-  ("(inst[" ++ show (length bs - 1) ++ ":0] == " ++ genBits bs ++ ")")
+  ("(inst[" ++ tshow (length bs - 1) ++ ":0] == " ++ genBits bs ++ ")")
 
 genInstDefs :: Proc -> V.Verilog
 genInstDefs = V.Seq . map genInstDef . insts
 
 genButtonDef :: Button -> V.Verilog
-genButtonDef (Button n i _) = V.Define ("BUTTON_" ++ n) [] ("buttons[" ++ show i ++ "]")
+genButtonDef (Button n i _) = V.Define ("BUTTON_" ++ n) [] ("buttons[" ++ tshow i ++ "]")
 
 genButtonDefs :: Proc -> V.Verilog
 genButtonDefs = V.Seq . map genButtonDef . buttons
@@ -112,7 +97,7 @@ genButtonTriggers = combineBlocks
   , V.Seq . map genButtonTrigger . buttons
   ]
 
-genOp :: Op -> String
+genOp :: Op -> Text
 genOp Add        = "+"
 genOp Sub        = "-"
 genOp Mul        = "*"
@@ -122,7 +107,7 @@ genOp BitwiseAnd = "&"
 genOp BitwiseOr  = "|"
 genOp BitwiseXor = "^"
 
-genBoolExpr :: [Type] -> [String] -> ([String], ([Bit], BitsExpr)) -> BoolExpr -> V.Expr
+genBoolExpr :: [Type] -> [Text] -> ([Text], ([Bit], BitsExpr)) -> BoolExpr -> V.Expr
 genBoolExpr argTypes ruleArgs (encArgs, (bits, enc)) (EqualityExpr e1 e2)   = V.BinaryOp
   (genExpr argTypes ruleArgs (encArgs, (bits, enc)) e1)
   "=="
@@ -140,7 +125,7 @@ genBoolExpr argTypes ruleArgs (encArgs, (bits, enc)) (LogicalOrExpr b1 b2)  = V.
   "||"
   (genBoolExpr argTypes ruleArgs (encArgs, (bits, enc)) b2)
 
-genExpr :: [Type] -> [String] -> ([String], ([Bit], BitsExpr)) -> Expr -> V.Expr
+genExpr :: [Type] -> [Text] -> ([Text], ([Bit], BitsExpr)) -> Expr -> V.Expr
 genExpr argTypes ruleArgs (encArgs, (bits, enc)) e = case e of
   VarExpr var         ->
     case lookup var $ zip ruleArgs (zip argTypes encArgs) of
@@ -148,18 +133,18 @@ genExpr argTypes ruleArgs (encArgs, (bits, enc)) e = case e of
         case argType of
           RegT size ->
             case findVarInEnc encArg (length bits) enc of
-              Just (i, j) -> V.Variable $ "_regs" ++ show size ++ "[inst[" ++ show j ++ ":" ++ show i ++ "]]"
-              Nothing     -> error $ "Variable " ++ var ++ " not used in encoding"
+              Just (i, j) -> V.Variable $ "_regs" ++ tshow size ++ "[inst[" ++ tshow j ++ ":" ++ tshow i ++ "]]"
+              Nothing     -> error $ "Variable " ++ unpack var ++ " not used in encoding"
           BitsT _ ->
             case findVarInEnc encArg (length bits) enc of
-              Just (i, j) -> V.Variable $ "inst[" ++ show j ++ ":" ++ show i ++ "]"
-              Nothing     -> error $ "Variable " ++ var ++ " not used in encoding"
+              Just (i, j) -> V.Variable $ "inst[" ++ tshow j ++ ":" ++ tshow i ++ "]"
+              Nothing     -> error $ "Variable " ++ unpack var ++ " not used in encoding"
           IntT _ ->
             case findVarInEnc encArg (length bits) enc of
-              Just (i, j) -> V.Variable $ "inst[" ++ show j ++ ":" ++ show i ++ "]"
-              Nothing     -> error $ "Variable " ++ var ++ " not used in encoding"
+              Just (i, j) -> V.Variable $ "inst[" ++ tshow j ++ ":" ++ tshow i ++ "]"
+              Nothing     -> error $ "Variable " ++ unpack var ++ " not used in encoding"
           InstT -> error "Instruction argument"
-      Nothing     -> error $ "No variable " ++ var
+      Nothing     -> error $ "No variable " ++ unpack var
   RegExpr reg         -> V.Variable reg
   MemAccessExpr mem _ -> V.Variable $ mem ++ "_out"
   ConstExpr n         -> V.Literal n
@@ -235,10 +220,10 @@ genNonEncRegDecls = V.Seq . map genNonEncRegDecl . filter (\(Reg _ _ e) -> null 
 
 genEncRegDecl :: (Int, [Reg]) -> V.Verilog
 genEncRegDecl (size, rs) = V.Seq
-  [ V.Reg size ("_regs" ++ show size) (Just $ n + 1) Nothing
-  , V.Seq [ V.Wire size name Nothing (Just . V.RawExpr $ "_regs" ++ show size ++ "[" ++ genBits bs ++ "]") | Reg name _ (Just bs) <- rs]
+  [ V.Reg size ("_regs" ++ tshow size) (Just $ n + 1) Nothing
+  , V.Seq [ V.Wire size name Nothing (Just . V.RawExpr $ "_regs" ++ tshow size ++ "[" ++ genBits bs ++ "]") | Reg name _ (Just bs) <- rs]
   ]
-  where n = maximum . map (\(Reg _ _ (Just bs)) -> bitsToInt Little bs) $ rs
+  where n = maximum . ncons 0 . map (\(Reg _ _ (Just bs)) -> bitsToInt Little bs) $ rs
 
 genEncRegDecls :: Proc -> V.Verilog
 genEncRegDecls Proc{..} = V.Seq . map genEncRegDecl $ encRegs
@@ -259,14 +244,14 @@ transposeRagged (xs:xss) = zipCons xs . transposeRagged $ xss
 zipFuncs :: Eq a => [(a, [b])] -> [a -> Maybe b]
 zipFuncs = map (flip lookup) . transposeRagged . map (uncurry zip . first (:[]))
 
-encRegValues :: Proc -> Int -> [String -> Maybe (V.Expr, V.Expr, V.Expr)]
+encRegValues :: Proc -> Int -> [Text -> Maybe (V.Expr, V.Expr, V.Expr)]
 encRegValues Proc{..} size =
   mapMaybe ((const . Just . (\(x,y) -> (V.Literal 1, x, y)) <$>) . encReg [] [] ([], ([], ConstBitsExpr []))) always
   ++ (zipFuncs . map (\(Inst n argTypes (ruleArgs, impls) enc) -> (n, mapMaybe (((\(x,y) -> (V.BinaryOp (V.Variable "execute") "&" (V.Variable $ "`is_inst_" ++ n ++ "(inst)"), x, y)) <$>) . encReg argTypes ruleArgs enc) impls)) $ insts)
   ++ (zipFuncs . map (\(Button n _ impls) -> (n, mapMaybe (((\(x,y) -> (V.RawExpr $ "!running & " ++ n ++ "_trigger", x, y)) <$>) . encReg [] [] ([], ([], ConstBitsExpr []))) impls)) $ buttons)
-  where encReg :: [Type] -> [String] -> ([String], ([Bit], BitsExpr)) -> ImplRule -> Maybe (V.Expr, V.Expr)
+  where encReg :: [Type] -> [Text] -> ([Text], ([Bit], BitsExpr)) -> ImplRule -> Maybe (V.Expr, V.Expr)
         encReg argTypes ruleArgs enc                    (ImplRule (RegLValue r) e) =
-          ((, genExpr argTypes ruleArgs enc e) <$>) . head . mapMaybe (\(Reg n _ regEnc) -> if n == r then Just (V.Bits <$> regEnc) else Nothing) $ regs
+          ((, genExpr argTypes ruleArgs enc e) <$>) . join . headMay . mapMaybe (\(Reg n _ regEnc) -> if n == r then Just (V.Bits <$> regEnc) else Nothing) $ regs
         encReg argTypes ruleArgs (encArgs, (bits, enc)) (ImplRule (VarLValue v) e) =
           case lookup v $ zip ruleArgs (zip argTypes encArgs) of
             Just (argType, encArg) ->
@@ -275,15 +260,15 @@ encRegValues Proc{..} size =
                   | size == size' ->
                       case findVarInEnc encArg (length bits) enc of
                         Just (i, j) -> Just
-                          ( V.RawExpr $ "_regs" ++ show size ++ "[inst[" ++ show j ++ ":" ++ show i ++ "]]"
+                          ( V.RawExpr $ "_regs" ++ tshow size ++ "[inst[" ++ tshow j ++ ":" ++ tshow i ++ "]]"
                           , genExpr argTypes ruleArgs (encArgs, (bits, enc)) e
                           )
-                        Nothing     -> error $ "Variable " ++ v ++ " not used in encoding"
+                        Nothing     -> error $ "Variable " ++ unpack v ++ " not used in encoding"
                   | otherwise     -> Nothing
                 BitsT _ -> error "Binary argument"
                 IntT  _ -> error "Integer argument"
                 InstT   -> error "Instruction argument"
-            Nothing     -> error $ "No variable " ++ v
+            Nothing     -> error $ "No variable " ++ unpack v
         encReg _        _         _                      _                         = Nothing
 
 genNonEncRegImpl :: [Inst] -> [Button] -> [ImplRule] -> Reg -> V.Verilog
@@ -315,14 +300,14 @@ genEncRegImpls :: Proc -> V.Verilog
 genEncRegImpls Proc{..} = V.Seq
   [ V.Wire
       i
-      ("_new_reg_" ++ show i ++ "_" ++ show j)
+      ("_new_reg_" ++ tshow i ++ "_" ++ tshow j)
       Nothing
       (Just . V.MultiCond V.UndefinedBehaviour $ rs)
     | (i, j, rs) <- impls ]
   where impls :: [(Int, Integer, [(V.Expr, V.Expr)])]
         impls = concatMap (\size -> zipWith (size,,) [0..] . map (\f -> mapMaybe (\(Inst n _ _ _) -> (\(x, _, z) -> (x, z)) <$> f n) insts) . encRegValues Proc{..} $ size) sizes
         sizes :: [Int]
-        sizes = map head . group . sort . map (\(Reg _ n _) -> n) $ regs
+        sizes = Set.toList . Set.fromList . map (\(Reg _ n _) -> n) $ regs
 
 genRegImpls :: Proc -> V.Verilog
 genRegImpls = combineBlocks [genNonEncRegImpls, genEncRegImpls]
@@ -331,27 +316,27 @@ genEncRegIndices :: Proc -> V.Verilog
 genEncRegIndices Proc{..} = V.Seq
   [ V.Wire
       i
-      ("_index_reg_" ++ show i ++ "_" ++ show j)
+      ("_index_reg_" ++ tshow i ++ "_" ++ tshow j)
       Nothing
       (Just . V.MultiCond V.UndefinedBehaviour $ rs)
     | (i, j, rs) <- impls ]
   where impls :: [(Int, Integer, [(V.Expr, V.Expr)])]
         impls = concatMap (\size -> zipWith (size,,) [0..] . map (\f -> mapMaybe (\(Inst n _ _ _) -> (\(x, y, _) -> (x, y)) <$> f n) insts) . encRegValues Proc{..} $ size) sizes
         sizes :: [Int]
-        sizes = map head . group . sort . map (\(Reg _ n _) -> n) $ regs
+        sizes = Set.toList . Set.fromList . map (\(Reg _ n _) -> n) $ regs
 
 genEncRegWrites :: Proc -> V.Verilog
 genEncRegWrites Proc{..} = V.Seq
   [ V.Wire
       i
-      ("_write_reg_" ++ show i ++ "_" ++ show j)
+      ("_write_reg_" ++ tshow i ++ "_" ++ tshow j)
       Nothing
       (Just . V.MultiCond (V.Literal 0) $ rs)
     | (i, j, rs) <- impls ]
   where impls :: [(Int, Integer, [(V.Expr, V.Expr)])]
         impls = concatMap (\size -> zipWith (size,,) [0..] . map (\f -> mapMaybe (\(Inst n _ _ _) -> (\(x, _, _) -> (x, V.Literal 1)) <$> f n) insts) . encRegValues Proc{..} $ size) sizes
         sizes :: [Int]
-        sizes = map head . group . sort . map (\(Reg _ n _) -> n) $ regs
+        sizes = Set.toList . Set.fromList . map (\(Reg _ n _) -> n) $ regs
 
 genUpdateRegs :: Proc -> V.Verilog
 genUpdateRegs Proc{..} =
@@ -360,15 +345,15 @@ genUpdateRegs Proc{..} =
         , V.RawExpr name
         , V.RawExpr $ "new_" ++ name
         ) | Reg name _ e <- regs, null e] ++
-      [ ( Just . V.Variable $ "_write_reg_" ++ show i ++ "_" ++ show j
-        , V.RawExpr $ "_regs" ++ show i ++ "[" ++ "_index_reg_" ++ show i ++ "_" ++ show j ++ "]"
-        , V.Variable $ "_new_reg_" ++ show i ++ "_" ++ show j
+      [ ( Just . V.Variable $ "_write_reg_" ++ tshow i ++ "_" ++ tshow j
+        , V.RawExpr $ "_regs" ++ tshow i ++ "[" ++ "_index_reg_" ++ tshow i ++ "_" ++ tshow j ++ "]"
+        , V.Variable $ "_new_reg_" ++ tshow i ++ "_" ++ tshow j
         ) | (i, j) <- impls ]
       )
   where impls :: [(Int, Int)]
         impls = concatMap (\size -> (\n -> [(size, i) | i <- [0..n-1]]) . length . encRegValues Proc{..} $ size) sizes
         sizes :: [Int]
-        sizes = map head . group . sort . map (\(Reg _ n _) -> n) $ regs
+        sizes = Set.toList . Set.fromList . map (\(Reg _ n _) -> n) $ regs
 
 genMemoryOut :: Memory -> V.Verilog
 genMemoryOut (Memory name dataWidth _) = V.Wire dataWidth (name ++ "_out") Nothing Nothing
@@ -376,9 +361,9 @@ genMemoryOut (Memory name dataWidth _) = V.Wire dataWidth (name ++ "_out") Nothi
 genMemoryOuts :: Proc -> V.Verilog
 genMemoryOuts = V.Seq . map genMemoryOut . memorys
 
-genMemoryRAM :: Memory -> [String]
+genMemoryRAM :: Memory -> [Text]
 genMemoryRAM (Memory name dataWidth addressWidth) =
-  [ "  RAM #(.DATA_BITS(" ++ show dataWidth ++ "),.ADDRESS_BITS(" ++ show addressWidth ++ "))"
+  [ "  RAM #(.DATA_BITS(" ++ tshow dataWidth ++ "),.ADDRESS_BITS(" ++ tshow addressWidth ++ "))"
   , name
   , "(.clk(clk),"
   , ".write(" ++ name ++ "_write),"
@@ -480,7 +465,7 @@ genMemoryWrites Proc{..} = V.Seq . map (genMemoryWrite Proc{..}) $ memorys
 genLed :: LedImpl -> V.Verilog
 genLed (LedImpl n1 n2 e) =
   V.Assign
-    (V.RawExpr $ "led[" ++ show n2 ++ ":" ++ show n1 ++ "]")
+    (V.RawExpr $ "led[" ++ tshow n2 ++ ":" ++ tshow n1 ++ "]")
     (genExpr' e)
 
 genLeds :: Proc -> V.Verilog

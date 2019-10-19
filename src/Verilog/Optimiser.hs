@@ -1,3 +1,4 @@
+{-# LANGUAGE NoImplicitPrelude, OverloadedStrings #-}
 {-|
 Module      : Verilog.Optimiser
 Description : A simple Verilog optimiser
@@ -9,6 +10,8 @@ Stability   : experimental
 module Verilog.Optimiser
   ( optimise
   ) where
+
+import ClassyPrelude
 
 import Verilog.AST
 
