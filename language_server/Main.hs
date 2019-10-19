@@ -65,6 +65,8 @@ reactor LspFuncs{..} ch = forever . ((liftIO . atomically . readTMChan $ ch) >>=
                )
              ]
         lift . publishDiagnosticsFunc 1 (toNormalizedUri uri) (Just version) $ ds
+      Left (error, Nothing) -> do
+        lift . sendFunc . NotShowMessage . fmServerShowMessageNotification MtError $ error
   Nothing -> return ()
 
 -- InitializeCallbacks
