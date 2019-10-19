@@ -1,5 +1,5 @@
 {
-{-# LANGUAGE NoImplicitPrelude, OverloadedStrings, RecordWildCards, LambdaCase #-}
+{-# LANGUAGE LambdaCase, NoImplicitPrelude, OverloadedStrings, RankNTypes, RecordWildCards #-}
 
 {-|
 Module      : Parser
@@ -22,7 +22,7 @@ import Parser.TypeCheck
 import Utils (Bit(..))
 
 import Control.Applicative (liftA2)
-import Control.Lens (over)
+import Control.Lens (Lens', over)
 import Control.Monad.Trans (lift)
 import Control.Monad (unless)
 import Control.Monad.Except (ExceptT(ExceptT))
@@ -88,16 +88,26 @@ import Data.Text.IO (readFile)
 %left '&&' '||'
 %%
 
-RawProc           :: { Locatable RawProc }
-RawProc           : {- empty -}                                  { pure $ initialProc }
-                  | RegTypes RawProc                             { over rawRegs     `fmap` (fmap (:) $1) <*> $2 }
-                  | InstTypes RawProc                            { over rawInsts    `fmap` (fmap (:) $1) <*> $2 }
-                  | ButtonTypes RawProc                          { over rawButtons  `fmap` (fmap (:) $1) <*> $2 }
-                  | MemoryTypes RawProc                          { over rawMemorys  `fmap` (fmap (:) $1) <*> $2 }
-                  | EncType RawProc                              { over rawEncTypes `fmap` (fmap (:) $1) <*> $2 }
-                  | Enc RawProc                                  { over rawEncs     `fmap` (fmap (:) $1) <*> $2 }
-                  | Impl RawProc                                 { over rawImpls    `fmap` (fmap (:) $1) <*> $2 }
-                  | LedImpls RawProc                             { over rawLedImpls `fmap` (fmap (:) $1) <*> $2 }
+RawProc           :: { RawProc }
+RawProc           : {- empty -}                                  { initialProc }
+                  | RegTypes RawProc                             {%
+  fillMaybe (throwLocalError $1 "More than one register block") rawRegs (return . locatableValue $ $1) $2
+}
+                  | InstTypes RawProc                            {%
+  fillMaybe (throwLocalError $1 "More than one instruction block") rawInsts (return . locatableValue $ $1) $2
+}
+                  | ButtonTypes RawProc                          {%
+  fillMaybe (throwLocalError $1 "More than one button block") rawButtons (return . locatableValue $ $1) $2
+}
+                  | MemoryTypes RawProc                          {%
+  fillMaybe (throwLocalError $1 "More than one memory block") rawMemorys (return . locatableValue $ $1) $2
+}
+                  | EncType RawProc                              { over rawEncTypes (locatableValue $1 :) $2 }
+                  | Enc RawProc                                  { over rawEncs     (locatableValue $1 :) $2 }
+                  | Impl RawProc                                 { over rawImpls    (locatableValue $1 :) $2 }
+                  | LedImpls RawProc                             {%
+  fillMaybe (throwLocalError $1 "More than one LED block") rawLedImpls (return . locatableValue $ $1) $2
+}
 
 Var               :: { Locatable Text }
 Var               : varTok                                       { $1 }
@@ -267,6 +277,7 @@ ImplRule          : Var '<-' Expr                                {%
         ButtonDefn       -> throwLocalError $1 $ locatableValue $1 ++ " is a button, expected a register or a local variable"
         (MemoryDefn _ _) -> throwLocalError $1 $ locatableValue $1 ++ " is a memory, expected a register or a local variable"
 }
+
                   | Var '[' Expr ']' '<-' Expr                   {% checkMemoryDefined $1 >> return (ImplRule `fmap` (MemAccessLValue `fmap` $1 <*> $3) <*> $6) }
 
 Impl              :: { Locatable Impl }
@@ -291,16 +302,21 @@ LedImpls          :: { Locatable [LedImpl] }
 LedImpls          : leds '{' List(LedImpl) '}'                   { $3 <* $1 <* $4 }
 
 {
+fillMaybe :: Functor f => f (Maybe a) -> Lens' s (Maybe a) -> f a -> s -> f s
+fillMaybe err l x = l f
+  where f Nothing  = Just <$> x
+        f (Just _) = err
+
 parseError :: Locatable Token -> ParserMonad a
 parseError = flip throwLocalError "Parse Error"
 
 -- | Parse the given string and return either an error together with a range or a `Proc'
 parse' :: Text -> Either (Text, Maybe (AlexPosn, AlexPosn)) Proc
-parse' = runParser' (fmap locatableValue parseM >>= typeCheck)
+parse' = runParser' (parseM >>= typeCheck)
 
 -- | Parse the given string and return either a nicely formatted error or a `Proc'
 parse :: Text -> Either Text Proc
-parse = runParser (fmap locatableValue parseM >>= typeCheck)
+parse = runParser (parseM >>= typeCheck)
 
 -- | Parse the given file and return either a nicely formatted error or a `Proc'
 parseFile :: FilePath -> ExceptT Text IO Proc

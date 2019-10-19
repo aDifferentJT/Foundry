@@ -74,19 +74,19 @@ data Impl
 
 -- | A data structure built by a single pass through the file
 data RawProc = RawProc
-  { _rawRegs     :: [[RegType]]    -- ^ The register blocks
-  , _rawInsts    :: [[InstType]]   -- ^ The instruction blocks
-  , _rawButtons  :: [[ButtonType]] -- ^ The button blocks
-  , _rawMemorys  :: [[Memory]]     -- ^ The memory blocks
-  , _rawEncTypes :: [EncType]      -- ^ The encoding types
-  , _rawEncs     :: [Enc]          -- ^ The encodings
-  , _rawImpls    :: [Impl]         -- ^ The implementations
-  , _rawLedImpls :: [[LedImpl]]    -- ^ The led blocks
+  { _rawRegs     :: Maybe [RegType]    -- ^ The register block
+  , _rawInsts    :: Maybe [InstType]   -- ^ The instruction block
+  , _rawButtons  :: Maybe [ButtonType] -- ^ The button blocks
+  , _rawMemorys  :: Maybe [Memory]     -- ^ The memory blocks
+  , _rawEncTypes :: [EncType]          -- ^ The encoding types
+  , _rawEncs     :: [Enc]              -- ^ The encodings
+  , _rawImpls    :: [Impl]             -- ^ The implementations
+  , _rawLedImpls :: Maybe [LedImpl]    -- ^ The led blocks
   }
   deriving Show
 
 -- | The initial `RawProc` to be added to as we parse the file
 initialProc :: RawProc
-initialProc = RawProc [] [] [] [] [] [] [] []
+initialProc = RawProc Nothing Nothing Nothing Nothing [] [] [] Nothing
 
 makeLenses ''RawProc
