@@ -2,7 +2,7 @@
 .PHONY: clean
 
 clean:
-	rm processor_*.v processor_*_assembler
+	rm processor_*.v processor_*_assembler lang_server*.log
 
 TESTS := $(wildcard *.fdry)
 
