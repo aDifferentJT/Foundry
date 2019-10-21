@@ -41,6 +41,7 @@ data ReactorInput
 
 toRange :: Maybe (AlexPosn, AlexPosn) -> Range
 toRange (Just (AlexPosn _ l1 c1, AlexPosn _ l2 c2)) = Range (Position (l1 - 1) (c1 - 1)) (Position (l2 - 1) (c2 - 1))
+toRange Nothing                                     = Range (Position 0 0) (Position 0 0)
 
 reactor :: LspFuncs Config -> TMChan ReactorInput -> IO ()
 reactor LspFuncs{..} ch = forever . ((liftIO . atomically . readTMChan $ ch) >>=) $ \case
@@ -49,7 +50,7 @@ reactor LspFuncs{..} ch = forever . ((liftIO . atomically . readTMChan $ ch) >>=
     VirtualFile version rope _ <- MaybeT . getVirtualFileFunc . toNormalizedUri $ uri
     case parse' . toText $ rope of
       Right _ -> lift . flushDiagnosticsBySourceFunc 0 . Just $ "Foundry"
-      Left es ->
+      Left es -> do
         let ds = Map.fromList
               [ ( Just "Foundry"
                 , toSortedList
@@ -60,10 +61,10 @@ reactor LspFuncs{..} ch = forever . ((liftIO . atomically . readTMChan $ ch) >>=
                       (Just "Foundry")
                       error
                       Nothing
-                    | (error, range) <- es
+                  | (error, range) <- es
                   ]
                 )
-              ] in
+              ]
         lift . publishDiagnosticsFunc 100 (toNormalizedUri uri) (Just version) $ ds
   Nothing -> return ()
 

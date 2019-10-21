@@ -190,19 +190,22 @@ VarWithArgs       : Var ArgList                                  {%
   do
     defn <- getIdentifierDefn $1
     case locatableValue defn of
-      RegDefn n      -> do
+      Just (RegDefn n)        -> do
         unless (null . locatableValue $ $2) . throwLocalError () $2 $ "Register " ++ locatableValue $1 ++ " has arguments"
-        return ($1, defn, pure [])
-      InstDefn ts    -> do
+        return ($1, RegDefn n <$ defn, pure [])
+      Just (InstDefn ts)      -> do
         unless (length ts == (length . locatableValue $ $2)) . throwLocalError () $2 $ "Instruction " ++ locatableValue $1 ++ " has " ++ tshow (length . locatableValue $ $2) ++ " arguments, expected " ++ tshow (length ts)
         vs <- fmap sequenceA . sequence . map (uncurry defineLocalVar) . flip zip ts . reverse . locatableValue $ $2
-        return ($1, defn, vs)
-      ButtonDefn     -> do
+        return ($1, InstDefn ts <$ defn, vs)
+      Just ButtonDefn         -> do
         unless (null . locatableValue $ $2) . throwLocalError () $2 $ "Button " ++ locatableValue $1 ++ " has arguments"
-        return ($1, defn, pure [])
-      MemoryDefn _ _ -> do
+        return ($1, ButtonDefn <$ defn, pure [])
+      Just (MemoryDefn w1 w2) -> do
         unless (null . locatableValue $ $2) . throwLocalError () $2 $ "Memory " ++ locatableValue $1 ++ " has arguments"
-        return ($1, defn, pure [])
+        return ($1, MemoryDefn w1 w2 <$ defn, pure [])
+      Nothing -> do
+        --vs <- fmap sequenceA . sequence . map (uncurry defineLocalVar) . flip zip ts . reverse . locatableValue $ $2
+        return ($1, InstDefn [] <$ defn, pure [])
 }
 
 Enc               :: { Locatable Enc }
@@ -222,20 +225,27 @@ Enc               : '<' VarWithArgs '>' '=' BitsExpr             {% fmap (<* $1)
                 $ "<" ++ locatableValue var ++ "> is of type Bits " ++ tshow d2 ++ " but I expected Bits " ++ tshow d1
               Nothing -> return ()
             return $ RegEnc `fmap` var <*> pure bs <* $1 <* $5
-          _                -> throwLocalError (pure (RegEnc "" []) <* $1 <* $5) $5 $ "Encoding for register " ++ locatableValue var ++ " is not constant"
+          _                ->
+            throwLocalError (pure (RegEnc "" []) <* $1 <* $5) $5
+            $ "Encoding for register " ++ locatableValue var ++ " is not constant"
       Locatable (InstDefn ts)   ps -> do
         (getEncType . Locatable InstT $ ps) >>= \case
           Just d1 ->
             case sizeOfMaybeEnc . locatableValue $ $5 of
               Just d2 ->
-                unless (d1 == d2) . throwLocalError () $5 $ "<" ++ intercalate " " (locatableValue var : ["<" ++ v ++ ">" | v <- locatableValue args]) ++ "> is of type Bits " ++ tshow d2 ++ " but I expected Bits " ++ tshow d1
+                unless (d1 == d2) . throwLocalError () $5
+                $ "<" ++ intercalate " " (locatableValue var : ["<" ++ v ++ ">" | v <- locatableValue args])
+                ++ "> is of type Bits " ++ tshow d2
+                ++ " but I expected Bits " ++ tshow d1
               Nothing -> return ()
           Nothing -> return ()
         e <- fmap (<$ $5) ((recover (ConstBitsExpr []) . unmaybeBitsExpr . locatableValue $ $5) >>= encPrefix)
         when (null . fst . locatableValue $ e) $ throwLocalError () e "Instruction encodings must have a constant prefix"
         return $ InstEnc `fmap` var <*> args <*> e <* $1
-      Locatable  ButtonDefn      _ -> throwLocalError' var $ "Encoding given for button " ++ locatableValue var
-      Locatable (MemoryDefn _ _) _ -> throwLocalError' var $ "Encoding given for memory " ++ locatableValue var
+      Locatable  ButtonDefn      _ -> do
+        throwLocalError (RegEnc `fmap` var <*> pure [] <* $1 <* $5) var $ "Encoding given for button " ++ locatableValue var
+      Locatable (MemoryDefn _ _) _ -> do
+        throwLocalError (RegEnc `fmap` var <*> pure [] <* $1 <* $5) var $ "Encoding given for memory " ++ locatableValue var
 }
 
 BoolExpr          :: { Locatable BoolExpr }
@@ -254,10 +264,11 @@ Expr              : '(' Expr ')'                                 { $2 <* $1 <* $
     else do
       defn <- getIdentifierDefn $1
       case locatableValue defn of
-        (RegDefn _)      -> return $ RegExpr `fmap` $1
-        (InstDefn _)     -> throwLocalError' $1 $ locatableValue $1 ++ " is an instruction, expected a register or a local variable"
-        ButtonDefn       -> throwLocalError' $1 $ locatableValue $1 ++ " is a button, expected a register or a local variable"
-        (MemoryDefn _ _) -> throwLocalError' $1 $ locatableValue $1 ++ " is a memory, expected a register or a local variable"
+        Just (RegDefn _)      -> return $ RegExpr `fmap` $1
+        Just (InstDefn _)     -> throwLocalError (RegExpr `fmap` $1) $1 $ locatableValue $1 ++ " is an instruction, expected a register or a local variable"
+        Just ButtonDefn       -> throwLocalError (RegExpr `fmap` $1) $1 $ locatableValue $1 ++ " is a button, expected a register or a local variable"
+        Just (MemoryDefn _ _) -> throwLocalError (RegExpr `fmap` $1) $1 $ locatableValue $1 ++ " is a memory, expected a register or a local variable"
+        Nothing               -> return $ RegExpr `fmap` $1
 }
                   | Var '[' Expr ']'                             {% checkMemoryDefined $1 >> return (MemAccessExpr `fmap` $1 <*> $3) }
                   | int                                          { ConstExpr `fmap` $1 }
@@ -281,10 +292,17 @@ ImplRule          : Var '<-' Expr                                {%
     else do
       defn <- getIdentifierDefn $1
       case locatableValue defn of
-        (RegDefn n)      -> return $ ImplRule `fmap` (RegLValue `fmap` $1) <*> $3
-        (InstDefn ts)    -> throwLocalError' $1 $ locatableValue $1 ++ " is an instruction, expected a register or a local variable"
-        ButtonDefn       -> throwLocalError' $1 $ locatableValue $1 ++ " is a button, expected a register or a local variable"
-        (MemoryDefn _ _) -> throwLocalError' $1 $ locatableValue $1 ++ " is a memory, expected a register or a local variable"
+        Just (RegDefn _)      -> return $ ImplRule `fmap` (RegLValue `fmap` $1) <*> $3
+        Just (InstDefn _)     ->
+          throwLocalError (ImplRule `fmap` (RegLValue `fmap` $1) <*> $3) $1
+          $ locatableValue $1 ++ " is an instruction, expected a register or a local variable"
+        Just ButtonDefn       ->
+          throwLocalError (ImplRule `fmap` (RegLValue `fmap` $1) <*> $3) $1
+          $ locatableValue $1 ++ " is a button, expected a register or a local variable"
+        Just (MemoryDefn _ _) ->
+          throwLocalError (ImplRule `fmap` (RegLValue `fmap` $1) <*> $3) $1
+          $ locatableValue $1 ++ " is a memory, expected a register or a local variable"
+        Nothing               -> return $ ImplRule `fmap` (RegLValue `fmap` $1) <*> $3
 }
 
                   | Var '[' Expr ']' '<-' Expr                   {% checkMemoryDefined $1 >> return (ImplRule `fmap` (MemAccessLValue `fmap` $1 <*> $3) <*> $6) }
@@ -294,13 +312,12 @@ Impl              : VarWithArgs '{' List(ImplRule) '}'           {% fmap (<* $4)
   do
     clearLocalVars
     let (var, defn, args) = $1
+    addImplemented var
     case locatableValue defn of
-      (RegDefn _)      -> throwLocalError' var $ "Implementation given for register " ++ locatableValue var
-      (InstDefn ts)    -> do
-        return (InstImpl `fmap` var <*> args <*> $3)
-      ButtonDefn       -> do
-        return (ButtonImpl `fmap` var <*> $3)
-      (MemoryDefn _ _) -> throwLocalError' var $ "Implementation given for memory " ++ locatableValue var
+      (RegDefn _)      -> throwLocalError (ButtonImpl `fmap` var <*> $3) var $ "Implementation given for register " ++ locatableValue var
+      (InstDefn ts)    -> return $ InstImpl `fmap` var <*> args <*> $3
+      ButtonDefn       -> return $ ButtonImpl `fmap` var <*> $3
+      (MemoryDefn _ _) -> throwLocalError (ButtonImpl `fmap` var <*> $3) var $ "Implementation given for memory " ++ locatableValue var
 }
 
 LedImpl           :: { Locatable LedImpl }
@@ -321,11 +338,11 @@ parseError = flip throwLocalError' "Parse Error"
 
 -- | Parse the given string and return either an error together with a range or a `Proc'
 parse' :: Text -> Either [(Text, Maybe (AlexPosn, AlexPosn))] Proc
-parse' = runParser' (parseM >>= typeCheck)
+parse' = runParser' (unrecover (parseM >>= \x -> throwUnimpl >> return x) >>= typeCheck)
 
 -- | Parse the given string and return either a nicely formatted error or a `Proc'
 parse :: Text -> Either Text Proc
-parse = runParser (parseM >>= typeCheck)
+parse = runParser (unrecover (parseM >>= \x -> throwUnimpl >> return x) >>= typeCheck)
 
 -- | Parse the given file and return either a nicely formatted error or a `Proc'
 parseFile :: FilePath -> ExceptT Text IO Proc

@@ -1,5 +1,4 @@
 {-# LANGUAGE FlexibleInstances, FlexibleContexts, LambdaCase, MultiParamTypeClasses, NoImplicitPrelude, OverloadedStrings, TupleSections, RecordWildCards #-}
-
 {-|
 Module      : Parser.Monad
 Description : The monad threaded through the parser
@@ -17,7 +16,7 @@ module Parser.Monad
   , alexGetByte
   , alexInputPrevChar
   , Defn(RegDefn, InstDefn, ButtonDefn, MemoryDefn)
-  , ParserState(ParserState, stateInput, stateLocalVars, stateGlobalIdents, stateEncTypes)
+  , ParserState(..)
   , ParserMonad
   , Locatable(Locatable)
   , throwLocalError'
@@ -26,11 +25,14 @@ module Parser.Monad
   , throwLocalErrorAt
   , throwGlobalError
   , recover
+  , unrecover
   , defineLocalVar
   , defineReg
   , defineInst
   , defineButton
   , defineMemory
+  , addImplemented
+  , throwUnimpl
   , isLocalVar
   , checkLocalVar
   , checkRegDefined
@@ -69,7 +71,7 @@ import Parser.AST
   , InstType(InstType)
   , ButtonType(ButtonType)
   )
-import Parser.Errors hiding (recover)
+import Parser.Errors hiding (recover, unrecover)
 import qualified Parser.Errors as Errors
 import Utils (Bit, mapLeft)
 
@@ -82,6 +84,7 @@ import qualified Control.Monad.Trans.State as State
 import Data.Char (ord)
 import qualified Data.Bits
 import qualified Data.Map.Lazy as Map
+import Data.Map.Lazy (Map)
 import Data.Word (Word8)
 
 -- | Encode a Haskell Text to a list of Word8 values, in UTF8 format.
@@ -154,21 +157,32 @@ data Defn
 
 -- | The current state to be threaded through the parser in the monad
 data ParserState = ParserState
-  { stateInput        :: AlexInput                     -- ^ The input to be read
-  , stateLocalVars    :: Map.Map Text Type             -- ^ The currently in scope local variables
-  , stateGlobalIdents :: Map.Map Text (Locatable Defn) -- ^ The global variables that have been defined so far
-  , stateEncTypes     :: Map.Map Type Int              -- ^ The encoding types that have so far been defined
+  { stateInput        :: AlexInput                                   -- ^ The input to be read
+  , stateLocalVars    :: Map Text Type                               -- ^ The currently in scope local variables
+  , stateGlobalIdents :: Map Text (Locatable Defn)                   -- ^ The global variables that have been defined so far
+  , stateToBeImpl     :: Map Text (Text, Maybe (AlexPosn, AlexPosn)) -- ^ The implementations that are still needed and the errors if they are not
+  , stateEncTypes     :: Map Type Int                                -- ^ The encoding types that have so far been defined
   }
 
 -- | Identifiers that should be predefined
-initialIdents :: Map.Map Text (Locatable Defn)
+initialIdents :: Map Text (Locatable Defn)
 initialIdents = Map.fromList
   [ ("always", pure $ InstDefn [])
   ]
 
 -- | The state to be threaded into the beginning of the parser
 initialParserState :: Text -> ParserState
-initialParserState s = ParserState (AlexInput alexStartPos '\n' [] s) Map.empty initialIdents Map.empty
+initialParserState s = ParserState (AlexInput alexStartPos '\n' [] s) Map.empty initialIdents (Map.mapWithKey getInitialToBeImpl initialIdents) Map.empty
+  where getInitialToBeImpl :: Text -> Locatable Defn -> (Text, Maybe (AlexPosn, AlexPosn))
+        getInitialToBeImpl v Locatable{..} =
+          ( ( case locatableValue of
+              RegDefn _      -> "Register "
+              InstDefn _     -> "Instruction "
+              ButtonDefn     -> "Button "
+              MemoryDefn _ _ -> "Memory "
+              ) ++ v ++ " has no implementation"
+            , locatablePosns
+            )
 
 -- | The monad to be threaded through the lexer and the parser
 type ParserMonad a = StateT ParserState (Errors (Text, Maybe (AlexPosn, AlexPosn))) a
@@ -189,11 +203,11 @@ throwLocalError :: b -> Locatable a -> Text -> ParserMonad b
 throwLocalError x l = recover x . throwLocalError' l
 
 -- | Throw an error in the `ParserMonad' in the given location without recovering
-throwLocalErrorAt' :: (AlexPosn, AlexPosn) -> Text -> ParserMonad b
-throwLocalErrorAt' ps s = throwError (s, Just ps)
+throwLocalErrorAt' :: Maybe (AlexPosn, AlexPosn) -> Text -> ParserMonad b
+throwLocalErrorAt' ps s = throwError (s, ps)
 
 -- | Throw an error in the `ParserMonad' in the given location
-throwLocalErrorAt :: b -> (AlexPosn, AlexPosn) -> Text -> ParserMonad b
+throwLocalErrorAt :: b -> Maybe (AlexPosn, AlexPosn) -> Text -> ParserMonad b
 throwLocalErrorAt x ps = recover x . throwLocalErrorAt' ps
 
 -- | Throw an error in the `ParserMonad' without a location
@@ -206,12 +220,16 @@ recover x m = do
   s <- get
   mapStateT (Errors.recover (x, s)) m
 
+-- | Bring errors to the surface in the `ParserMonad`
+unrecover :: ParserMonad a -> ParserMonad a
+unrecover = mapStateT Errors.unrecover
+
 -- | Define a local variable with the given identifier and type in the `ParserMonad'
 defineLocalVar :: Locatable Text -> Type -> ParserMonad (Locatable Text)
 defineLocalVar Locatable{..} t = do
   ParserState{..} <- State.get
-  when (Map.member locatableValue stateLocalVars)    . throwLocalError () Locatable{..} $ "Variable " ++ locatableValue ++ " redefined"
-  when (Map.member locatableValue stateGlobalIdents) . throwLocalError () Locatable{..} $ "Variable " ++ locatableValue ++ " has the same name as an identifier previously defined at " ++ prettyPosn locatablePosns
+  when (Map.member locatableValue stateLocalVars)    . throwLocalErrorAt () locatablePosns $ "Variable " ++ locatableValue ++ " redefined"
+  when (Map.member locatableValue stateGlobalIdents) . throwLocalErrorAt () locatablePosns $ "Variable " ++ locatableValue ++ " has the same name as an identifier previously defined at " ++ prettyPosn locatablePosns
   State.put $ ParserState{ stateLocalVars = Map.insert locatableValue t stateLocalVars, .. }
   return Locatable{..}
 
@@ -246,7 +264,11 @@ defineInst var ts = do
     Just (Locatable (MemoryDefn _ _) ps) -> throwLocalError () var
       $ "Instruction " ++ locatableValue var ++ " has the same name as a previously defined memory, defined at " ++ prettyPosn ps
     Nothing               -> State.put
-      $ ParserState{ stateGlobalIdents = Map.insert (locatableValue var) (InstDefn <$ var <*> ts) stateGlobalIdents, .. }
+      $ ParserState
+      { stateGlobalIdents = Map.insert (locatableValue var) (InstDefn <$ var <*> ts) stateGlobalIdents
+      , stateToBeImpl = Map.insert (locatableValue var) ("Instruction " ++ locatableValue var ++ " has no implementation", locatablePosns var) stateToBeImpl
+      , ..
+      }
   return $ InstType <$> var <*> ts
 
 -- | Define a button with the given identifier and physical id in the `ParserMonad'
@@ -263,7 +285,11 @@ defineButton var n = do
     Just (Locatable (MemoryDefn _ _) ps) -> throwLocalError () var
       $ "Button " ++ locatableValue var ++ " has the same name as a previously defined memory, defined at " ++ prettyPosn ps
     Nothing               -> State.put
-      $ ParserState{ stateGlobalIdents = Map.insert (locatableValue var) (ButtonDefn <$ var) stateGlobalIdents, .. }
+      $ ParserState
+      { stateGlobalIdents = Map.insert (locatableValue var) (ButtonDefn <$ var) stateGlobalIdents
+      , stateToBeImpl = Map.insert (locatableValue var) ("Button " ++ locatableValue var ++ " has no implementation", locatablePosns var) stateToBeImpl
+      , ..
+      }
   return $ ButtonType <$> var <*> n
 
 -- | Define a memory with the given identifier, data width and address width in the `ParserMonad'
@@ -282,6 +308,17 @@ defineMemory var dataWidth addressWidth = do
     Nothing               -> State.put
       $ ParserState{ stateGlobalIdents = Map.insert (locatableValue var) (MemoryDefn <$ var <*> dataWidth <*> addressWidth) stateGlobalIdents, .. }
   return $ Memory <$> var <*> dataWidth <*> addressWidth
+
+addImplemented :: Locatable Text -> ParserMonad ()
+addImplemented Locatable{..} = do
+  ParserState{..} <- State.get
+  unless (Map.member locatableValue stateToBeImpl)
+    . throwLocalErrorAt () locatablePosns
+    $ locatableValue ++ " already implemented"
+  State.put $ ParserState{ stateToBeImpl = Map.delete locatableValue stateToBeImpl, .. }
+
+throwUnimpl :: ParserMonad ()
+throwUnimpl = State.get >>= lift . throwErrors () . Map.elems . stateToBeImpl
 
 -- | Return if the given identifier represents a local variable in the current scope
 isLocalVar :: Text -> ParserMonad Bool
@@ -376,12 +413,12 @@ checkMemoryDefined var = do
       throwLocalError () var $ "Memory " ++ locatableValue var ++ " not defined"
 
 -- | Get the definition of the given identifier
-getIdentifierDefn :: Locatable Text -> ParserMonad (Locatable Defn)
+getIdentifierDefn :: Locatable Text -> ParserMonad (Locatable (Maybe Defn))
 getIdentifierDefn Locatable{..} = do
   ParserState{..} <- State.get
   case Map.lookup locatableValue stateGlobalIdents of
-    Nothing -> throwLocalError' Locatable{..} $ "Identifier " ++ locatableValue ++ " not defined"
-    Just d  -> return d
+    Nothing -> throwLocalError (Nothing <$ Locatable{..}) Locatable{..} $ "Identifier " ++ locatableValue ++ " not defined"
+    Just d  -> return $ Just <$> d
 
 -- | Get the width of the encoding of the given local variable
 getLocalVarWidth :: Locatable Text -> ParserMonad (Maybe Int)

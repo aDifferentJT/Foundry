@@ -12,7 +12,8 @@ module Parser.Errors
   ( Errors
   , runErrors
   , recover
-  , silentError
+  , unrecover
+  , throwErrors
   ) where
 
 import ClassyPrelude
@@ -36,8 +37,10 @@ recover :: a -> Errors e a -> Errors e a
 recover _ (Recovered es x) = Recovered es x
 recover x (Unrecovered es) = Recovered es x
 
-silentError :: Errors e a
-silentError = Unrecovered []
+unrecover :: Errors e a -> Errors e a
+unrecover (Recovered [] x) = Recovered [] x
+unrecover (Recovered es _) = Unrecovered es
+unrecover (Unrecovered es) = Unrecovered es
 
 instance Functor (Errors e) where
   fmap f (Recovered es x) = Recovered es (f x)
@@ -58,4 +61,8 @@ instance MonadError e (Errors e) where
   throwError = Unrecovered . (:[])
   catchError (Recovered es x)     _ = Recovered es x
   catchError (Unrecovered (e:es)) f = join . Recovered es . f $ e
+
+throwErrors :: a -> [e] -> Errors e a
+throwErrors x [] = Recovered [] x
+throwErrors _ es = Unrecovered es
 
