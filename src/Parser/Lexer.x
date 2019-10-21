@@ -74,7 +74,7 @@ tokens :-
   Inst                        { wrapPlainToken InstTok }
   Button                      { wrapPlainToken ButtonTok }
   RAM                         { wrapPlainToken RAMTok }
-  $upper [$alpha $digit \_]*  { \str ps -> throwLocalErrorAt ps ("Unrecognised type name: " ++ str) }
+  $upper [$alpha $digit \_]*  { \str ps -> throwLocalErrorAt' ps ("Unrecognised type name: " ++ str) }
 
 {
 -- | The tokens to lex
@@ -136,7 +136,7 @@ readToken = do
       return . Locatable EOF . Just $ (charPos stateInput, charPos stateInput)
     AlexError input'       -> do
       State.put ParserState{ stateInput = input', .. }
-      throwLocalErrorAt (charPos stateInput, alexMove (charPos input') (Text.head . str $ input')) "Could not lex token"
+      throwLocalErrorAt' (charPos stateInput, alexMove (charPos input') (Text.head . str $ input')) "Could not lex token"
     AlexSkip input' _      -> do
       State.put ParserState{ stateInput = input', .. }
       readToken

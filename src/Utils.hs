@@ -15,6 +15,8 @@ module Utils
   , Endianness(Little, Big)
   , bitsToInt
   , intToBits
+  , mapLeft
+  , mapRight
   , mapHead
   , mapLast
   , mapInitLast
@@ -73,6 +75,14 @@ intToBits Little = unfoldr f
         f 0 = Nothing
         f x = Just (toEnum (x .&. 1), shiftR x 1)
 intToBits Big    = reverse . intToBits Little
+
+-- | Map the left side of an Either
+mapLeft :: (a1 -> a2) -> Either a1 b -> Either a2 b
+mapLeft f = either (Left . f) Right
+
+-- | Map the right side of an Either
+mapRight :: (b1 -> b2) -> Either a b1 -> Either a b2
+mapRight f = either Left (Right . f)
 
 -- | Map only the head of the list
 mapHead :: (a -> a) -> [a] -> [a]

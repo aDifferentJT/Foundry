@@ -10,7 +10,6 @@ import Parser.AlexPosn (AlexPosn(AlexPosn))
 import Data.Maybe (fromMaybe, listToMaybe)
 
 import Control.Concurrent (forkIO)
---import Control.Concurrent.STM (TMChan, atomically, newTMChan, readTMChan, writeTMChan)
 import Control.Lens ((^.))
 import Control.Monad (when, unless, forever, void)
 import Control.Monad.Except (ExceptT, runExceptT, throwError)
@@ -40,8 +39,8 @@ data ReactorInput
   = SendMessage FromServerMessage
   | ShowDiagnostics Uri
 
-toRange :: (AlexPosn, AlexPosn) -> Range
-toRange (AlexPosn _ l1 c1, AlexPosn _ l2 c2) = Range (Position (l1 - 1) (c1 - 1)) (Position (l2 - 1) (c2 - 1))
+toRange :: Maybe (AlexPosn, AlexPosn) -> Range
+toRange (Just (AlexPosn _ l1 c1, AlexPosn _ l2 c2)) = Range (Position (l1 - 1) (c1 - 1)) (Position (l2 - 1) (c2 - 1))
 
 reactor :: LspFuncs Config -> TMChan ReactorInput -> IO ()
 reactor LspFuncs{..} ch = forever . ((liftIO . atomically . readTMChan $ ch) >>=) $ \case
@@ -50,23 +49,22 @@ reactor LspFuncs{..} ch = forever . ((liftIO . atomically . readTMChan $ ch) >>=
     VirtualFile version rope _ <- MaybeT . getVirtualFileFunc . toNormalizedUri $ uri
     case parse' . toText $ rope of
       Right _ -> lift . flushDiagnosticsBySourceFunc 0 . Just $ "Foundry"
-      Left (error, Just range) -> do
+      Left es ->
         let ds = Map.fromList
-             [ ( Just "Foundry"
-               , toSortedList
-                 [ Diagnostic
-                     (toRange range)
-                     (Just DsError)
-                     Nothing
-                     (Just "Foundry")
-                     error
-                     Nothing
-                 ]
-               )
-             ]
-        lift . publishDiagnosticsFunc 1 (toNormalizedUri uri) (Just version) $ ds
-      Left (error, Nothing) -> do
-        lift . sendFunc . NotShowMessage . fmServerShowMessageNotification MtError $ error
+              [ ( Just "Foundry"
+                , toSortedList
+                  [ Diagnostic
+                      (toRange range)
+                      (Just DsError)
+                      Nothing
+                      (Just "Foundry")
+                      error
+                      Nothing
+                    | (error, range) <- es
+                  ]
+                )
+              ] in
+        lift . publishDiagnosticsFunc 100 (toNormalizedUri uri) (Just version) $ ds
   Nothing -> return ()
 
 -- InitializeCallbacks

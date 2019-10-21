@@ -15,6 +15,8 @@ module Parser.AST
   , RegType(..)
   , InstType(..)
   , ButtonType(..)
+  , MaybeBitsExpr(..)
+  , sizeOfMaybeEnc
   , Enc(..)
   , Impl(..)
   , RawProc(
@@ -59,6 +61,25 @@ data InstType = InstType Text [Type]
 -- | A declaration of the physical index of a button
 data ButtonType = ButtonType Text Int
   deriving Show
+
+-- | An expression for some bits with maybe widths
+data MaybeBitsExpr
+  = MaybeConstBitsExpr [Bit]                                    -- ^ A constant array of bits
+  | MaybeEncBitsExpr (Maybe Int) Text                           -- ^ The encoding of a variable with given width and identifier
+  | MaybeConcatBitsExpr (Maybe Int) MaybeBitsExpr MaybeBitsExpr -- ^ Two expressions of bits concatenated with the width
+  | MaybeAndBitsExpr (Maybe Int) MaybeBitsExpr MaybeBitsExpr    -- ^ Two expressions of bits combined with a bitwise and operation with the width
+  | MaybeOrBitsExpr (Maybe Int) MaybeBitsExpr MaybeBitsExpr     -- ^ Two expressions of bits combined with a bitwise or operation with the width
+  | MaybeXorBitsExpr (Maybe Int) MaybeBitsExpr MaybeBitsExpr    -- ^ Two expressions of bits combined with a bitwise exclusive or operation with the width
+  deriving Show
+
+-- | Calculate the width of an expression of bits
+sizeOfMaybeEnc :: MaybeBitsExpr -> Maybe Int
+sizeOfMaybeEnc (MaybeConstBitsExpr  bs)    = Just . length $ bs
+sizeOfMaybeEnc (MaybeEncBitsExpr    n _)   = n
+sizeOfMaybeEnc (MaybeConcatBitsExpr n _ _) = n
+sizeOfMaybeEnc (MaybeAndBitsExpr    n _ _) = n
+sizeOfMaybeEnc (MaybeOrBitsExpr     n _ _) = n
+sizeOfMaybeEnc (MaybeXorBitsExpr    n _ _) = n
 
 -- | A definition of an encoding of a register or an instruction
 data Enc
