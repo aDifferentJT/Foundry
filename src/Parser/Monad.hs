@@ -33,6 +33,7 @@ module Parser.Monad
   , defineButton
   , defineMemory
   , addImplemented
+  , addEncoded
   , throwUnimpl
   , checkLocalVar
   , checkRegDefined
@@ -164,6 +165,7 @@ data ParserState = ParserState
   , stateLocalVars    :: Map Text Type                               -- ^ The currently in scope local variables
   , stateGlobalIdents :: Map Text (Locatable Defn)                   -- ^ The global variables that have been defined so far
   , stateToBeImpl     :: Map Text (Text, Maybe (AlexPosn, AlexPosn)) -- ^ The implementations that are still needed and the errors if they are not
+  , stateToBeEnc      :: Map Text (Text, Maybe (AlexPosn, AlexPosn)) -- ^ The encodings that are still needed and the errors if they are not
   , stateEncTypes     :: Map Type Int                                -- ^ The encoding types that have so far been defined
   }
 
@@ -175,7 +177,13 @@ initialIdents = Map.fromList
 
 -- | The state to be threaded into the beginning of the parser
 initialParserState :: Text -> ParserState
-initialParserState s = ParserState (AlexInput alexStartPos '\n' [] s) Map.empty initialIdents (Map.mapWithKey getInitialToBeImpl initialIdents) Map.empty
+initialParserState s = ParserState
+    (AlexInput alexStartPos '\n' [] s)
+    Map.empty
+    initialIdents
+    (Map.mapWithKey getInitialToBeImpl initialIdents)
+    Map.empty
+    Map.empty
   where getInitialToBeImpl :: Text -> Locatable Defn -> (Text, Maybe (AlexPosn, AlexPosn))
         getInitialToBeImpl v Locatable{..} =
           ( ( case locatableValue of
@@ -269,7 +277,8 @@ defineInst var ts = do
     Nothing               -> State.put
       $ ParserState
       { stateGlobalIdents = Map.insert (locatableValue var) (InstDefn <$ var <*> ts) stateGlobalIdents
-      , stateToBeImpl = Map.insert (locatableValue var) ("Instruction " ++ locatableValue var ++ " has no implementation", locatablePosns var) stateToBeImpl
+      , stateToBeImpl     = Map.insert (locatableValue var) ("Instruction " ++ locatableValue var ++ " has no implementation", locatablePosns var) stateToBeImpl
+      , stateToBeEnc      = Map.insert (locatableValue var) ("Instruction " ++ locatableValue var ++ " has no encoding",       locatablePosns var) stateToBeEnc
       , ..
       }
   return $ (,) <$> var <*> ts
@@ -320,8 +329,18 @@ addImplemented Locatable{..} = do
     $ locatableValue ++ " already implemented"
   State.put $ ParserState{ stateToBeImpl = Map.delete locatableValue stateToBeImpl, .. }
 
+addEncoded :: Locatable Text -> ParserMonad ()
+addEncoded Locatable{..} = do
+  ParserState{..} <- State.get
+  unless (Map.member locatableValue stateToBeEnc)
+    . throwLocalErrorAt () locatablePosns
+    $ locatableValue ++ " already encoded"
+  State.put $ ParserState{ stateToBeEnc = Map.delete locatableValue stateToBeEnc, .. }
+
 throwUnimpl :: ParserMonad ()
-throwUnimpl = State.get >>= lift . throwErrors () . Map.elems . stateToBeImpl
+throwUnimpl = do
+  ParserState{..} <- State.get
+  lift . throwErrors () $ Map.elems stateToBeImpl ++ Map.elems stateToBeEnc
 
 -- | Check if the given identifier represents a local variable in the current scope
 checkLocalVar :: Locatable Text -> ParserMonad ()

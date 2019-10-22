@@ -220,6 +220,7 @@ Enc               : '<' VarWithArgs '>' '=' BitsExpr Semi                 {% fma
             throwLocalError (pure ("", RegEnc []) <* $1 <* $5) $5
             $ "Encoding for register " ++ locatableValue var ++ " is not constant"
       Locatable (InstDefn ts)   ps -> do
+        addEncoded var
         (getEncType . Locatable InstT $ ps) >>= \case
           Just d1 ->
             case sizeOfMaybeEnc . locatableValue $ $5 of
