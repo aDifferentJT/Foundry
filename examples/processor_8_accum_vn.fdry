@@ -1,14 +1,12 @@
 -- THIS DOES NOT WORK, MULTIPLE MEMORY ACCESSES PER CLOCK CYCLE NOT YET IMPLEMENTED
 
-instructions {
-- halt
-- add <Int 5>
-- sub <Int 5>
-- ldm <Int 5>
-- stm <Int 5>
-- jnz <Int 5>
-- jmp <Int 5>
-}
+halt : Inst
+add  : Inst <Int 5>
+sub  : Inst <Int 5>
+ldm  : Inst <Int 5>
+stm  : Inst <Int 5>
+jnz  : Inst <Int 5>
+jmp  : Inst <Int 5>
 
 <Inst> : Bits 8
 <halt>    = 0b00000000
@@ -19,33 +17,27 @@ instructions {
 <jnz <n>> = 0b110 ++ <n>
 <jmp <n>> = 0b111 ++ <n>
 
-registers {
-- inst   : Reg 8
-- pc     : Reg 5
-- accum  : Reg 8
-- buffer : Reg 8
-}
+inst   : Reg 8
+pc     : Reg 5
+accum  : Reg 8
+buffer : Reg 8
 
-buttons {
-- bufferI0  : Button 0
-- bufferI1  : Button 1
-- bufferI2  : Button 2
-- bufferI3  : Button 3
-- bufferI4  : Button 4
-- bufferI5  : Button 5
-- bufferI6  : Button 6
-- bufferI7  : Button 7
-- pc_inc    : Button 8
-- pc_dec    : Button 9
-- pc_clr    : Button 10
-- accum_clr : Button 11
-- run       : Button 14
-- execute   : Button 15
-}
+bufferI0  : Button 0
+bufferI1  : Button 1
+bufferI2  : Button 2
+bufferI3  : Button 3
+bufferI4  : Button 4
+bufferI5  : Button 5
+bufferI6  : Button 6
+bufferI7  : Button 7
+pc_inc    : Button 8
+pc_dec    : Button 9
+pc_clr    : Button 10
+accum_clr : Button 11
+run       : Button 14
+execute   : Button 15
 
-memory {
-- progMem : RAM 8 5
-}
+progMem : RAM 8 5
 
 leds {
   led[7:0]   <- progMem[pc]
@@ -140,4 +132,3 @@ run {
 
 execute {
 }
-

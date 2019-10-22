@@ -1,15 +1,13 @@
-instructions {
-halt
-addI <Reg 4> <Int 2>
-subI <Reg 4> <Int 2>
-addR <Reg 4> <Reg 4>
-subR <Reg 4> <Reg 4>
-ldm  <Reg 4> <Reg 4>
-stm  <Reg 4> <Reg 4>
-jp   <Int 4>
-jpz  <Int 4>
-out  <Reg 4>
-}
+halt : Inst
+addI : Inst <Reg 4> <Int 2>
+subI : Inst <Reg 4> <Int 2>
+addR : Inst <Reg 4> <Reg 4>
+subR : Inst <Reg 4> <Reg 4>
+ldm  : Inst <Reg 4> <Reg 4>
+stm  : Inst <Reg 4> <Reg 4>
+jp   : Inst <Int 4>
+jpz  : Inst <Int 4>
+out  : Inst <Reg 4>
 
 inst   : Reg 8
 pc     : Reg 4
