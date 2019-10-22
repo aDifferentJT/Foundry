@@ -33,18 +33,14 @@ $lower = [a-z]     -- lower case characters
 $upper = [A-Z]     -- upper case characters
 
 tokens :-
-  $white+    ;
-  "--".*     ;
-  registers                   { wrapPlainToken Registers }
-  instructions                { wrapPlainToken Instructions }
-  buttons                     { wrapPlainToken Buttons }
-  memory                      { wrapPlainToken MemoryTok }
+  $white+;
+  "--".*;
   leds                        { wrapPlainToken LedsTok }
   led                         { wrapPlainToken LedTok }
   \:                          { wrapPlainToken Colon }
-  \-                          { wrapPlainToken Hyphen }
   \=                          { wrapPlainToken Equals }
   \+                          { wrapPlainToken Plus }
+  \-                          { wrapPlainToken Minus }
   \*                          { wrapPlainToken Times }
   \/                          { wrapPlainToken Slash }
   \&                          { wrapPlainToken And }
@@ -79,14 +75,10 @@ tokens :-
 {
 -- | The tokens to lex
 data Token
-  = Registers               -- ^ @registers@
-  | Instructions            -- ^ @instructions@
-  | Buttons                 -- ^ @buttons@
-  | MemoryTok               -- ^ @memory@
-  | LedsTok                 -- ^ @leds@
+  = LedsTok                 -- ^ @leds@
   | LedTok                  -- ^ @led@
   | Colon                   -- ^ @:@
-  | Hyphen                  -- ^ @-@
+  | Minus                   -- ^ @-@
   | Equals                  -- ^ @=@
   | Plus                    -- ^ @+@
   | Times                   -- ^ @*@

@@ -1,26 +1,24 @@
 instructions {
-- halt
-- addI <Reg 4> <Int 2>
-- subI <Reg 4> <Int 2>
-- addR <Reg 4> <Reg 4>
-- subR <Reg 4> <Reg 4>
-- ldm  <Reg 4> <Reg 4>
-- stm  <Reg 4> <Reg 4>
-- jp   <Int 4>
-- jpz  <Int 4>
-- out  <Reg 4>
+halt
+addI <Reg 4> <Int 2>
+subI <Reg 4> <Int 2>
+addR <Reg 4> <Reg 4>
+subR <Reg 4> <Reg 4>
+ldm  <Reg 4> <Reg 4>
+stm  <Reg 4> <Reg 4>
+jp   <Int 4>
+jpz  <Int 4>
+out  <Reg 4>
 }
 
-registers {
-- inst   : Reg 8
-- pc     : Reg 4
-- buffer : Reg 8
-- r1     : Reg 4
-- r2     : Reg 4
-- r3     : Reg 4
-- r4     : Reg 4
-- outR   : Reg 4
-}
+inst   : Reg 8
+pc     : Reg 4
+buffer : Reg 8
+r1     : Reg 4
+r2     : Reg 4
+r3     : Reg 4
+r4     : Reg 4
+outR   : Reg 4
 
 <Reg 4> : Bits 2
 <r1> = 0b00
@@ -40,29 +38,25 @@ registers {
 <jpz <n>>      = 0b1000 ++ <n>
 <out <x>>      = 0b1001 ++ <x> ++ 0b00
 
-buttons {
-- bufferI0  : Button 0
-- bufferI1  : Button 1
-- bufferI2  : Button 2
-- bufferI3  : Button 3
-- bufferI4  : Button 4
-- bufferI5  : Button 5
-- bufferI6  : Button 6
-- bufferI7  : Button 7
+bufferI0  : Button 0
+bufferI1  : Button 1
+bufferI2  : Button 2
+bufferI3  : Button 3
+bufferI4  : Button 4
+bufferI5  : Button 5
+bufferI6  : Button 6
+bufferI7  : Button 7
 -- - store     : Button 8
 -- - clear     : Button 9
 -- - pc_inc    : Button 10
 -- - pc_dec    : Button 11
 -- - pc_clr    : Button 12
 -- - accum_clr : Button 13
-- run       : Button 14
-- execute   : Button 15
-}
+run       : Button 14
+execute   : Button 15
 
-memory {
-- dataMem : RAM 4 4
-- progMem : RAM 8 4
-}
+dataMem : RAM 4 4
+progMem : RAM 8 4
 
 leds {
   led[7:0]   <- buffer

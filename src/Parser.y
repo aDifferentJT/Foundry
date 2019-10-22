@@ -38,16 +38,12 @@ import Data.Text.IO (readFile)
 %error { parseError }
 
 %token
-  registers     { Locatable Registers _ }
-  instructions  { Locatable Instructions _ }
-  buttons       { Locatable Buttons _ }
-  memory        { Locatable MemoryTok _ }
   leds          { Locatable LedsTok _ }
   led           { Locatable LedTok _ }
   ':'           { Locatable Colon _ }
-  '-'           { Locatable Hyphen _ }
   '='           { Locatable Equals _ }
   '+'           { Locatable Plus _ }
+  '-'           { Locatable Minus _ }
   '*'           { Locatable Times _ }
   '/'           { Locatable Slash _ }
   '&'           { Locatable And _ }
@@ -90,18 +86,10 @@ import Data.Text.IO (readFile)
 
 RawProc           :: { RawProc }
 RawProc           : {- empty -}                                  { initialProc }
-                  | RegTypes RawProc                             {%
-  fillMaybe (throwLocalError Nothing $1 "More than one register block") rawRegs (return . locatableValue $ $1) $2
-}
-                  | InstTypes RawProc                            {%
-  fillMaybe (throwLocalError Nothing $1 "More than one instruction block") rawInsts (return . locatableValue $ $1) $2
-}
-                  | ButtonTypes RawProc                          {%
-  fillMaybe (throwLocalError Nothing $1 "More than one button block") rawButtons (return . locatableValue $ $1) $2
-}
-                  | MemoryTypes RawProc                          {%
-  fillMaybe (throwLocalError Nothing $1 "More than one memory block") rawMemorys (return . locatableValue $ $1) $2
-}
+                  | RegType RawProc                              { over rawRegs (locatableValue $1 :) $2 }
+                  | InstType RawProc                             { over rawInsts (locatableValue $1 :) $2 }
+                  | ButtonType RawProc                           { over rawButtons (locatableValue $1 :) $2 }
+                  | MemoryType RawProc                           { over rawMemorys (locatableValue $1 :) $2 }
                   | EncType RawProc                              { over rawEncTypes (locatableValue $1 :) $2 }
                   | Enc RawProc                                  { over rawEncs     (locatableValue $1 :) $2 }
                   | Impl RawProc                                 { over rawImpls    (locatableValue $1 :) $2 }
@@ -152,31 +140,19 @@ ArgTypeList       : {- empty -}                                  { pure [] }
                   | ArgTypeList '<' Type '>'                     { liftA2 (:) $3 $1 <* $2 <* $4 }
 
 RegType           :: { Locatable RegType }
-RegType           : '-' Var ':' regT int                         {% fmap (<* $1) $ defineReg $2 $5 }
+RegType           : Var ':' regT int                             {% defineReg $1 $4 }
 
 InstType          :: { Locatable InstType }
-InstType          : '-' Var ArgTypeList                          {% fmap (<* $1) $ defineInst $2 (reverse `fmap` $3) }
+InstType          : Var ':' instT ArgTypeList                    {% defineInst $1 (reverse `fmap` $4) }
 
 ButtonType        :: { Locatable ButtonType }
-ButtonType        : '-' Var ':' buttonT int                      {% fmap (<* $1) $ defineButton $2 $5 }
+ButtonType        : Var ':' buttonT int                          {% defineButton $1 $4 }
 
 MemoryType        :: { Locatable Memory }
-MemoryType        : '-' Var ':' ramT int int                     {% fmap (<* $1) $ defineMemory $2 $5 $6 }
+MemoryType        : Var ':' ramT int int                         {% defineMemory $1 $4 $5 }
 
 List(p)           : {- empty -}                                  { pure [] }
                   | List(p) p                                    { liftA2 (:) $2 $1 }
-
-RegTypes          :: { Locatable [RegType] }
-RegTypes          : registers '{' List(RegType) '}'              { $3 }
-
-InstTypes         :: { Locatable [InstType] }
-InstTypes         : instructions '{' List(InstType) '}'          { $3 }
-
-ButtonTypes       :: { Locatable [ButtonType] }
-ButtonTypes       : buttons '{' List(ButtonType) '}'             { $3 }
-
-MemoryTypes       :: { Locatable [Memory] }
-MemoryTypes       : memory '{' List(MemoryType) '}'              { $3 }
 
 EncType           :: { Locatable EncType }
 EncType           : '<' Type '>' ':' bitsT int                   {% fmap (<* $1) $ defineEncType $2 $6 }
