@@ -1,6 +1,5 @@
 {
 {-# LANGUAGE LambdaCase, NoImplicitPrelude, OverloadedStrings, RankNTypes, RecordWildCards #-}
-
 {-|
 Module      : Parser
 Description : The parser
@@ -85,6 +84,9 @@ import Data.Text.IO (readFile)
 %left '&&' '||'
 %%
 
+RawProcPrefixSemi :: { RawProc }
+RawProcPrefixSemi : Maybe(Semi) RawProc                                   { $2 }
+
 RawProc           :: { RawProc }
 RawProc           : {- empty -}                                           { initialProc }
                   | RegType RawProc                                       { over rawRegs (locatableValue $1 :) $2 }
@@ -117,7 +119,11 @@ Type              : regT int                                              { RegT
 BitsExpr          :: { Locatable MaybeBitsExpr }
 BitsExpr          : '(' BitsExpr ')'                                      { $2 }
                   | bits                                                  { MaybeConstBitsExpr `fmap` $1 }
-                  | '<' Var '>'                                           {% fmap (\w -> (MaybeEncBitsExpr w `fmap` $2 <* $1 <* $3)) (getLocalVarWidth $2) }
+                  | '<' Var '>'                                           {%
+  getLocalVarWidth $2 >>= \case
+    Just n  -> return $ MaybeEncBitsExpr (Just n) `fmap` $2 <* $1 <* $3
+    Nothing -> checkLocalVar $2 >> (return . pure $ MaybeConstBitsExpr [])
+}
                   | BitsExpr '++' BitsExpr                                {
   MaybeConcatBitsExpr (liftM2 (+) (sizeOfMaybeEnc . locatableValue $ $1) (sizeOfMaybeEnc . locatableValue $ $3)) `fmap` $1 <*> $3
 }
@@ -241,42 +247,56 @@ BoolExpr          : Expr '==' Expr                                        { Equa
 Expr              :: { Locatable Expr }
 Expr              : '(' Expr ')'                                          { $2 <* $1 <* $3 }
                   | Var                                                   {%
-  do
-    loc <- isLocalVar . locatableValue $ $1
-    if loc
-    then return $ VarExpr `fmap` $1
-    else do
+  getLocalVarWidth $1 >>= \case
+    Just n  -> return $ VarExpr (Just n) `fmap` $1
+    Nothing -> do
       defn <- getIdentifierDefn $1
       case locatableValue defn of
-        Just (RegDefn _)      -> return $ RegExpr `fmap` $1
-        Just (InstDefn _)     -> throwLocalError (RegExpr `fmap` $1) $1 $ locatableValue $1 ++ " is an instruction, expected a register or a local variable"
-        Just ButtonDefn       -> throwLocalError (RegExpr `fmap` $1) $1 $ locatableValue $1 ++ " is a button, expected a register or a local variable"
-        Just (MemoryDefn _ _) -> throwLocalError (RegExpr `fmap` $1) $1 $ locatableValue $1 ++ " is a memory, expected a register or a local variable"
-        Nothing               -> return $ RegExpr `fmap` $1
+        Just (RegDefn n)      -> return $ RegExpr (Just n) `fmap` $1
+        Just (InstDefn _)     ->
+          throwLocalError (RegExpr Nothing `fmap` $1) $1
+          $ locatableValue $1 ++ " is an instruction, expected a register or a local variable"
+        Just ButtonDefn       ->
+          throwLocalError (RegExpr Nothing `fmap` $1) $1
+          $ locatableValue $1 ++ " is a button, expected a register or a local variable"
+        Just (MemoryDefn _ _) ->
+          throwLocalError (RegExpr Nothing `fmap` $1) $1
+          $ locatableValue $1 ++ " is a memory, expected a register or a local variable"
+        Nothing               -> return $ RegExpr Nothing `fmap` $1
 }
-                  | Var '[' Expr ']'                                      {% checkMemoryDefined $1 >> return (MemAccessExpr `fmap` $1 <*> $3) }
+                  | Var '[' Expr ']'                                      {% getMemoryWidth $1 >>= \n -> return $ MemAccessExpr n `fmap` $1 <*> $3 }
                   | int                                                   { ConstExpr `fmap` $1 }
                   | bits                                                  { BinaryConstExpr `fmap` $1 }
-                  | Expr '+' Expr                                         { OpExpr Add `fmap` $1 <*> $3 }
-                  | Expr '-' Expr                                         { OpExpr Sub `fmap` $1 <*> $3 }
-                  | Expr '*' Expr                                         { OpExpr Mul `fmap` $1 <*> $3 }
-                  | Expr '/' Expr                                         { OpExpr Div `fmap` $1 <*> $3 }
-                  | Expr '++' Expr                                        { OpExpr ConcatBits `fmap` $1 <*> $3 }
-                  | Expr '&' Expr                                         { OpExpr BitwiseAnd `fmap` $1 <*> $3 }
-                  | Expr '|' Expr                                         { OpExpr BitwiseOr `fmap` $1 <*> $3 }
-                  | Expr '^' Expr                                         { OpExpr BitwiseXor `fmap` $1 <*> $3 }
-                  | BoolExpr '?' Expr ':' Expr                            { TernaryExpr `fmap` $1 <*> $3 <*> $5 }
+                  | Expr '+' Expr                                         {% let e = OpExpr Add `fmap` $1 <*> $3         in widthOfExpr e >> return e }
+                  | Expr '-' Expr                                         {% let e = OpExpr Sub `fmap` $1 <*> $3         in widthOfExpr e >> return e }
+                  | Expr '*' Expr                                         {% let e = OpExpr Mul `fmap` $1 <*> $3         in widthOfExpr e >> return e }
+                  | Expr '/' Expr                                         {% let e = OpExpr Div `fmap` $1 <*> $3         in widthOfExpr e >> return e }
+                  | Expr '++' Expr                                        {% let e = OpExpr ConcatBits `fmap` $1 <*> $3  in widthOfExpr e >> return e }
+                  | Expr '&' Expr                                         {% let e = OpExpr BitwiseAnd `fmap` $1 <*> $3  in widthOfExpr e >> return e }
+                  | Expr '|' Expr                                         {% let e = OpExpr BitwiseOr `fmap` $1 <*> $3   in widthOfExpr e >> return e }
+                  | Expr '^' Expr                                         {% let e = OpExpr BitwiseXor `fmap` $1 <*> $3  in widthOfExpr e >> return e }
+                  | BoolExpr '?' Expr ':' Expr                            {% let e = TernaryExpr `fmap` $1 <*> $3 <*> $5 in widthOfExpr e >> return e }
 
 ImplRule          :: { Locatable ImplRule }
 ImplRule          : Var '<-' Expr Semi                                    {%
-  do
-    loc <- isLocalVar . locatableValue $ $1
-    if loc
-    then return $ ImplRule `fmap` (VarLValue `fmap` $1) <*> $3
-    else do
+  getLocalVarWidth $1 >>= \case
+    Just d1 -> do
+      widthOfExpr $3 >>= \case
+        Just d2 ->
+          unless (d1 == d2) . throwLocalError () $3
+          $ "Expression of width " ++ tshow d2 ++ " assigned to " ++ locatableValue $1 ++ " which is of width " ++ tshow d1
+        Nothing -> return ()
+      return $ ImplRule `fmap` (VarLValue `fmap` $1) <*> $3
+    Nothing -> do
       defn <- getIdentifierDefn $1
       case locatableValue defn of
-        Just (RegDefn _)      -> return $ ImplRule `fmap` (RegLValue `fmap` $1) <*> $3
+        Just (RegDefn d1)     -> do
+          widthOfExpr $3 >>= \case
+            Just d2 ->
+              unless (d1 == d2) . throwLocalError () $3
+              $ "Expression of width " ++ tshow d2 ++ " assigned to " ++ locatableValue $1 ++ " which is of width " ++ tshow d1
+            Nothing -> return ()
+          return $ ImplRule `fmap` (RegLValue `fmap` $1) <*> $3
         Just (InstDefn _)     ->
           throwLocalError (ImplRule `fmap` (RegLValue `fmap` $1) <*> $3) $1
           $ locatableValue $1 ++ " is an instruction, expected a register or a local variable"
@@ -289,7 +309,18 @@ ImplRule          : Var '<-' Expr Semi                                    {%
         Nothing               -> return $ ImplRule `fmap` (RegLValue `fmap` $1) <*> $3
 }
 
-                  | Var '[' Expr ']' '<-' Expr Semi                       {% checkMemoryDefined $1 >> return (ImplRule `fmap` (MemAccessLValue `fmap` $1 <*> $3) <*> $6) }
+                  | Var '[' Expr ']' '<-' Expr Semi                       {%
+  do
+    getMemoryWidth $1 >>= \case
+      Just d1 ->
+        widthOfExpr $6 >>= \case
+          Just d2 ->
+            unless (d1 == d2) . throwLocalError () $6
+            $ "Expression of width " ++ tshow d2 ++ " assigned to " ++ locatableValue $1 ++ " which is of width " ++ tshow d1
+          Nothing -> return ()
+      Nothing -> return ()
+    return (ImplRule `fmap` (MemAccessLValue `fmap` $1 <*> $3) <*> $6)
+}
 
 Impl              :: { Locatable Impl }
 Impl              : VarWithArgs '{' Maybe(Semi) List(ImplRule) '}' Semi   {% fmap (<* $5) $
@@ -305,8 +336,25 @@ Impl              : VarWithArgs '{' Maybe(Semi) List(ImplRule) '}' Semi   {% fma
 }
 
 LedImpl           :: { Locatable LedImpl }
-LedImpl           : led '[' int ']' '<-' Expr Semi                        { LedImpl `fmap` $3 <*> $3 <*> $6 <* $1 }
-                  | led '[' int ':' int ']' '<-' Expr Semi                { LedImpl `fmap` $3 <*> $5 <*> $8 <* $1 }
+LedImpl           : led '[' int ']' '<-' Expr Semi                        {%
+  do
+    widthOfExpr $6 >>= \case
+      Just d2 ->
+        unless (1 == d2) . throwLocalError () $6
+        $ "Expression of width " ++ tshow d2 ++ " assigned to a single LED"
+      Nothing -> return ()
+    return $ LedImpl `fmap` $3 <*> $3 <*> $6 <* $1
+}
+                  | led '[' int ':' int ']' '<-' Expr Semi                {%
+  do
+    let d1 = abs (locatableValue $5 - locatableValue $3) + 1
+    widthOfExpr $8 >>= \case
+      Just d2 ->
+        unless (d1 == d2) . throwLocalError () $8
+        $ "Expression of width " ++ tshow d2 ++ " assigned to a range of " ++ tshow d1 ++ " LEDs"
+      Nothing -> return ()
+    return $ LedImpl `fmap` $3 <*> $5 <*> $8 <* $1
+}
 
 LedImpls          :: { Locatable [LedImpl] }
 LedImpls          : leds '{' Maybe(Semi) List(LedImpl) '}' Semi           { $4 <* $1 <* $5 }

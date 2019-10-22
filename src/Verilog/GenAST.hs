@@ -127,7 +127,7 @@ genBoolExpr argTypes ruleArgs (encArgs, (bits, enc)) (LogicalOrExpr b1 b2)  = V.
 
 genExpr :: [Type] -> [Text] -> ([Text], ([Bit], BitsExpr)) -> Expr -> V.Expr
 genExpr argTypes ruleArgs (encArgs, (bits, enc)) e = case e of
-  VarExpr var         ->
+  VarExpr _ var         ->
     case lookup var $ zip ruleArgs (zip argTypes encArgs) of
       Just (argType, encArg) ->
         case argType of
@@ -145,15 +145,15 @@ genExpr argTypes ruleArgs (encArgs, (bits, enc)) e = case e of
               Nothing     -> error $ "Variable " ++ unpack var ++ " not used in encoding"
           InstT -> error "Instruction argument"
       Nothing     -> error $ "No variable " ++ unpack var
-  RegExpr reg         -> V.Variable reg
-  MemAccessExpr mem _ -> V.Variable $ mem ++ "_out"
-  ConstExpr n         -> V.Literal n
-  BinaryConstExpr bs  -> V.Bits bs
-  OpExpr o e1 e2      -> V.BinaryOp
+  RegExpr _ reg         -> V.Variable reg
+  MemAccessExpr _ mem _ -> V.Variable $ mem ++ "_out"
+  ConstExpr n           -> V.Literal n
+  BinaryConstExpr bs    -> V.Bits bs
+  OpExpr o e1 e2        -> V.BinaryOp
     (genExpr argTypes ruleArgs (encArgs, (bits, enc)) e1)
     (genOp o)
     (genExpr argTypes ruleArgs (encArgs, (bits, enc)) e2)
-  TernaryExpr b e1 e2 -> V.TernaryOp
+  TernaryExpr b e1 e2   -> V.TernaryOp
     (genBoolExpr argTypes ruleArgs (encArgs, (bits, enc)) b)
     (genExpr argTypes ruleArgs (encArgs, (bits, enc)) e1)
     (genExpr argTypes ruleArgs (encArgs, (bits, enc)) e2)
@@ -412,9 +412,9 @@ genMemoryAddr Proc{..} (Memory name _ addressWidth) =
           | otherwise   = memAccessForExpr expr
         memoryPred (ImplRule _ expr) = memAccessForExpr expr
         memAccessForExpr :: Expr -> Maybe Expr
-        memAccessForExpr (VarExpr _)           = Nothing
-        memAccessForExpr (RegExpr _)           = Nothing
-        memAccessForExpr (MemAccessExpr n e)   = if n == name then Just e else memAccessForExpr e
+        memAccessForExpr (VarExpr _ _)         = Nothing
+        memAccessForExpr (RegExpr _ _)         = Nothing
+        memAccessForExpr (MemAccessExpr _ n e) = if n == name then Just e else memAccessForExpr e
         memAccessForExpr (ConstExpr _)         = Nothing
         memAccessForExpr (BinaryConstExpr _)   = Nothing
         memAccessForExpr (OpExpr _ e1 e2)      = case memAccessForExpr e1 of

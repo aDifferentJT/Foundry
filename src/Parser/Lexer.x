@@ -33,11 +33,11 @@ $lower = [a-z]     -- lower case characters
 $upper = [A-Z]     -- upper case characters
 
 tokens :-
+  ($white # \n)+;
   \\\n;
   \n                          { wrapPlainToken Semi }
   ";"                         { wrapPlainToken Semi }
-  ($white # \n)+;
-  "--".*;
+  "--".*\n                    { wrapPlainToken Semi }
   leds                        { wrapPlainToken LedsTok }
   led                         { wrapPlainToken LedTok }
   ":"                         { wrapPlainToken Colon }

@@ -102,13 +102,13 @@ data BoolExpr
 
 -- | An expression
 data Expr
-  = VarExpr Text                   -- ^ An expression representing a variable
-  | RegExpr Text                   -- ^ An expression representing the value in a register
-  | MemAccessExpr Text Expr        -- ^ An access into memory
-  | ConstExpr Int                  -- ^ A constant
-  | BinaryConstExpr [Bit]          -- ^ A binary constant (some bits)
-  | OpExpr Op Expr Expr            -- ^ A binary operation
-  | TernaryExpr BoolExpr Expr Expr -- ^ A C-style ternary expression
+  = VarExpr (Maybe Int) Text            -- ^ An expression representing a variable
+  | RegExpr (Maybe Int) Text            -- ^ An expression representing the value in a register
+  | MemAccessExpr (Maybe Int) Text Expr -- ^ An access into memory
+  | ConstExpr Int                       -- ^ A constant
+  | BinaryConstExpr [Bit]               -- ^ A binary constant (some bits)
+  | OpExpr Op Expr Expr                 -- ^ A binary operation
+  | TernaryExpr BoolExpr Expr Expr      -- ^ A C-style ternary expression
   deriving Show
 
 -- | An expression into which we can assign a value

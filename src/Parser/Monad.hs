@@ -18,6 +18,7 @@ module Parser.Monad
   , Defn(RegDefn, InstDefn, ButtonDefn, MemoryDefn)
   , ParserState(..)
   , ParserMonad
+  , prettyPosn
   , Locatable(Locatable)
   , throwLocalError'
   , throwLocalError
@@ -33,19 +34,19 @@ module Parser.Monad
   , defineMemory
   , addImplemented
   , throwUnimpl
-  , isLocalVar
   , checkLocalVar
   , checkRegDefined
   , checkInstDefined
   , checkButtonDefined
-  , checkMemoryDefined
   , getIdentifierDefn
   , getLocalVarWidth
+  , getMemoryWidth
   , clearLocalVars
   , defineEncType
   , getEncType
   , unmaybeBitsExpr
   , encPrefix
+  , widthOfExpr
   , runParser'
   , runParser
   ) where
@@ -66,6 +67,8 @@ import Parser.AST
   , MaybeBitsExpr(..)
   , BitsExpr(..)
   , sizeOfEnc
+  , Op(..)
+  , Expr(..)
   , Memory(Memory)
   , RegType(RegType)
   , InstType(InstType)
@@ -320,12 +323,6 @@ addImplemented Locatable{..} = do
 throwUnimpl :: ParserMonad ()
 throwUnimpl = State.get >>= lift . throwErrors () . Map.elems . stateToBeImpl
 
--- | Return if the given identifier represents a local variable in the current scope
-isLocalVar :: Text -> ParserMonad Bool
-isLocalVar var = do
-  ParserState{..} <- State.get
-  return $ Map.member var stateLocalVars
-
 -- | Check if the given identifier represents a local variable in the current scope
 checkLocalVar :: Locatable Text -> ParserMonad ()
 checkLocalVar var = do
@@ -395,23 +392,6 @@ checkButtonDefined var = do
     Nothing               ->
       throwLocalError () var $ "Button " ++ locatableValue var ++ " not defined"
 
--- | Check if the given identifier represents a memory
-checkMemoryDefined :: Locatable Text -> ParserMonad ()
-checkMemoryDefined var = do
-  ParserState{..} <- State.get
-  if Map.member (locatableValue var) stateLocalVars
-  then throwLocalError () var $ locatableValue var ++ " is a local variable, expected a memory"
-  else case Map.lookup (locatableValue var) stateGlobalIdents of
-    Just (Locatable (RegDefn _)      ps) ->
-      throwLocalError () var $ locatableValue var ++ " is a register as defined at " ++ prettyPosn ps ++ ", expected a memory"
-    Just (Locatable (InstDefn _)     ps) ->
-      throwLocalError () var $ locatableValue var ++ " is an instruction as defined at " ++ prettyPosn ps ++ ", expected a memory"
-    Just (Locatable  ButtonDefn      ps) ->
-      throwLocalError () var $ locatableValue var ++ " is a button as defined at " ++ prettyPosn ps ++ ", expected a memory"
-    Just (Locatable (MemoryDefn _ _) _)  -> return ()
-    Nothing                              ->
-      throwLocalError () var $ "Memory " ++ locatableValue var ++ " not defined"
-
 -- | Get the definition of the given identifier
 getIdentifierDefn :: Locatable Text -> ParserMonad (Locatable (Maybe Defn))
 getIdentifierDefn Locatable{..} = do
@@ -423,22 +403,24 @@ getIdentifierDefn Locatable{..} = do
 -- | Get the width of the encoding of the given local variable
 getLocalVarWidth :: Locatable Text -> ParserMonad (Maybe Int)
 getLocalVarWidth var = do
+  Map.lookup (locatableValue var) . stateLocalVars <$> State.get >>= maybe (return Nothing) (getEncType . pure)
+
+-- | Check if the given identifier represents a memory
+getMemoryWidth :: Locatable Text -> ParserMonad (Maybe Int)
+getMemoryWidth var = do
   ParserState{..} <- State.get
-  case Map.lookup (locatableValue var) stateLocalVars of
-    Just t ->
-      getEncType (pure t)
-    Nothing ->
-      case Map.lookup (locatableValue var) stateGlobalIdents of
-        Just (Locatable (RegDefn _)      ps) ->
-          throwLocalError Nothing var $ locatableValue var ++ " is a register as defined at " ++ prettyPosn ps ++ ", expected a local variable"
-        Just (Locatable (InstDefn _)     ps) ->
-          throwLocalError Nothing var $ locatableValue var ++ " is an instruction as defined at " ++ prettyPosn ps ++ ", expected a local variable"
-        Just (Locatable  ButtonDefn      ps) ->
-          throwLocalError Nothing var $ locatableValue var ++ " is a button as defined at " ++ prettyPosn ps ++ ", expected a local variable"
-        Just (Locatable (MemoryDefn _ _) ps) ->
-          throwLocalError Nothing var $ locatableValue var ++ " is a memory as defined at " ++ prettyPosn ps ++ ", expected a local variable"
-        Nothing               ->
-          throwLocalError Nothing var $ "Variable " ++ locatableValue var ++ " not defined"
+  if Map.member (locatableValue var) stateLocalVars
+  then throwLocalError Nothing var $ locatableValue var ++ " is a local variable, expected a memory"
+  else case Map.lookup (locatableValue var) stateGlobalIdents of
+    Just (Locatable (RegDefn _)      ps) ->
+      throwLocalError Nothing var $ locatableValue var ++ " is a register as defined at " ++ prettyPosn ps ++ ", expected a memory"
+    Just (Locatable (InstDefn _)     ps) ->
+      throwLocalError Nothing var $ locatableValue var ++ " is an instruction as defined at " ++ prettyPosn ps ++ ", expected a memory"
+    Just (Locatable  ButtonDefn      ps) ->
+      throwLocalError Nothing var $ locatableValue var ++ " is a button as defined at " ++ prettyPosn ps ++ ", expected a memory"
+    Just (Locatable (MemoryDefn n _) _)  -> return . Just $ n
+    Nothing                              ->
+      throwLocalError Nothing var $ "Memory " ++ locatableValue var ++ " not defined"
 
 -- | Clear all the currently defined local variables
 clearLocalVars :: ParserMonad ()
@@ -485,6 +467,34 @@ encPrefix e = case e of
   AndBitsExpr n e1 e2    -> return ([], AndBitsExpr n e1 e2)
   OrBitsExpr  n e1 e2    -> return ([], OrBitsExpr  n e1 e2)
   XorBitsExpr n e1 e2    -> return ([], XorBitsExpr n e1 e2)
+
+widthOfExpr :: Locatable Expr -> ParserMonad (Maybe Int)
+widthOfExpr Locatable{..} = case locatableValue of
+  VarExpr n _             -> return n
+  RegExpr n _             -> return n
+  MemAccessExpr n _ _     -> return n
+  ConstExpr _             -> return Nothing
+  BinaryConstExpr bs      -> return . Just . length $ bs
+  OpExpr ConcatBits e1 e2 ->
+    liftM2 (liftM2 (+)) (widthOfExpr Locatable{ locatableValue = e1, .. }) (widthOfExpr Locatable{ locatableValue = e2, .. })
+  OpExpr op e1 e2         ->
+    liftM2 (,) (widthOfExpr Locatable{ locatableValue = e1, .. }) (widthOfExpr Locatable{ locatableValue = e2, .. }) >>= \case
+      (Just n1, Just n2)
+        | n1 == n2  -> return . Just $ n1
+        | otherwise -> throwLocalErrorAt Nothing locatablePosns
+            $ "Cannot " ++ tshow op ++ " operands of widths " ++ tshow n1 ++ " and " ++ tshow n2
+      (Just n,  Nothing) -> return . Just $ n
+      (Nothing, Just n)  -> return . Just $ n
+      (Nothing, Nothing) -> return Nothing
+  TernaryExpr _ e1 e2     ->
+    liftM2 (,) (widthOfExpr Locatable{ locatableValue = e1, .. }) (widthOfExpr Locatable{ locatableValue = e2, .. }) >>= \case
+      (Just n1, Just n2)
+        | n1 == n2  -> return . Just $ n1
+        | otherwise -> throwLocalErrorAt Nothing locatablePosns
+            $ "Cannot have ternary expression with operands of widths " ++ tshow n1 ++ " and " ++ tshow n2
+      (Just n,  Nothing) -> return . Just $ n
+      (Nothing, Just n)  -> return . Just $ n
+      (Nothing, Nothing) -> return Nothing
 
 runParser' :: ParserMonad a -> Text -> Either [(Text, Maybe (AlexPosn, AlexPosn))] a
 runParser' m = runErrors . (fst <$>) . runStateT m . initialParserState
