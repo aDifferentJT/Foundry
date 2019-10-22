@@ -33,34 +33,37 @@ $lower = [a-z]     -- lower case characters
 $upper = [A-Z]     -- upper case characters
 
 tokens :-
-  $white+;
+  \\\n;
+  \n                          { wrapPlainToken Semi }
+  ";"                         { wrapPlainToken Semi }
+  ($white # \n)+;
   "--".*;
   leds                        { wrapPlainToken LedsTok }
   led                         { wrapPlainToken LedTok }
-  \:                          { wrapPlainToken Colon }
-  \=                          { wrapPlainToken Equals }
-  \+                          { wrapPlainToken Plus }
-  \-                          { wrapPlainToken Minus }
-  \*                          { wrapPlainToken Times }
-  \/                          { wrapPlainToken Slash }
-  \&                          { wrapPlainToken And }
-  \|                          { wrapPlainToken Or }
-  \^                          { wrapPlainToken Xor }
-  \+\+                        { wrapPlainToken Concat }
-  \=\=                        { wrapPlainToken Equality }
-  \!\=                        { wrapPlainToken Inequality }
-  \&\&                        { wrapPlainToken LogicalAnd }
-  \|\|                        { wrapPlainToken LogicalOr }
-  \?                          { wrapPlainToken Question }
-  \<\-                        { wrapPlainToken LeftArrow }
-  \<                          { wrapPlainToken OpenAngle }
-  \>                          { wrapPlainToken CloseAngle }
-  \{                          { wrapPlainToken OpenCurly }
-  \}                          { wrapPlainToken CloseCurly }
-  \(                          { wrapPlainToken OpenParen }
-  \)                          { wrapPlainToken CloseParen }
-  \[                          { wrapPlainToken OpenSquare }
-  \]                          { wrapPlainToken CloseSquare }
+  ":"                         { wrapPlainToken Colon }
+  "="                         { wrapPlainToken Equals }
+  "+"                         { wrapPlainToken Plus }
+  "-"                         { wrapPlainToken Minus }
+  "*"                         { wrapPlainToken Times }
+  "/"                         { wrapPlainToken Slash }
+  "&"                         { wrapPlainToken And }
+  "|"                         { wrapPlainToken Or }
+  "^"                         { wrapPlainToken Xor }
+  "++"                        { wrapPlainToken Concat }
+  "=="                        { wrapPlainToken Equality }
+  "!="                        { wrapPlainToken Inequality }
+  "&&"                        { wrapPlainToken LogicalAnd }
+  "||"                        { wrapPlainToken LogicalOr }
+  "?"                         { wrapPlainToken Question }
+  "<-"                        { wrapPlainToken LeftArrow }
+  "<"                         { wrapPlainToken OpenAngle }
+  ">"                         { wrapPlainToken CloseAngle }
+  "{"                         { wrapPlainToken OpenCurly }
+  "}"                         { wrapPlainToken CloseCurly }
+  "("                         { wrapPlainToken OpenParen }
+  ")"                         { wrapPlainToken CloseParen }
+  "["                         { wrapPlainToken OpenSquare }
+  "]"                         { wrapPlainToken CloseSquare }
   0b[01]+                     { wrapFuncToken $ Bits . ((map (read . (:[])) . unpack . Text.drop 2) <$>) }
   $digit+                     { wrapFuncToken $ Int . (read . unpack <$>) }
   $lower [$alpha $digit \_]*  { wrapFuncToken VarTok }
@@ -75,7 +78,8 @@ tokens :-
 {
 -- | The tokens to lex
 data Token
-  = LedsTok                 -- ^ @leds@
+  = Semi                    -- ^ @;@
+  | LedsTok                 -- ^ @leds@
   | LedTok                  -- ^ @led@
   | Colon                   -- ^ @:@
   | Minus                   -- ^ @-@
@@ -128,7 +132,8 @@ readToken = do
       return . Locatable EOF . Just $ (charPos stateInput, charPos stateInput)
     AlexError input'       -> do
       State.put ParserState{ stateInput = input', .. }
-      throwLocalErrorAt' (Just (charPos stateInput, alexMove (charPos input') (Text.head . str $ input'))) "Could not lex token"
+      throwLocalErrorAt' (Just (charPos stateInput, alexMove (charPos input') (Text.head . str $ input')))
+        $ "Could not lex token: " ++ tshow (Text.head . str $ input')
     AlexSkip input' _      -> do
       State.put ParserState{ stateInput = input', .. }
       readToken

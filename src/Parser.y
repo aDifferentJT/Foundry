@@ -38,6 +38,7 @@ import Data.Text.IO (readFile)
 %error { parseError }
 
 %token
+  ';'           { Locatable Semi _ }
   leds          { Locatable LedsTok _ }
   led           { Locatable LedTok _ }
   ':'           { Locatable Colon _ }
@@ -85,49 +86,56 @@ import Data.Text.IO (readFile)
 %%
 
 RawProc           :: { RawProc }
-RawProc           : {- empty -}                                  { initialProc }
-                  | RegType RawProc                              { over rawRegs (locatableValue $1 :) $2 }
-                  | InstType RawProc                             { over rawInsts (locatableValue $1 :) $2 }
-                  | ButtonType RawProc                           { over rawButtons (locatableValue $1 :) $2 }
-                  | MemoryType RawProc                           { over rawMemorys (locatableValue $1 :) $2 }
-                  | EncType RawProc                              { over rawEncTypes (locatableValue $1 :) $2 }
-                  | Enc RawProc                                  { over rawEncs     (locatableValue $1 :) $2 }
-                  | Impl RawProc                                 { over rawImpls    (locatableValue $1 :) $2 }
-                  | LedImpls RawProc                             {%
+RawProc           : {- empty -}                                           { initialProc }
+                  | RegType RawProc                                       { over rawRegs (locatableValue $1 :) $2 }
+                  | InstType RawProc                                      { over rawInsts (locatableValue $1 :) $2 }
+                  | ButtonType RawProc                                    { over rawButtons (locatableValue $1 :) $2 }
+                  | MemoryType RawProc                                    { over rawMemorys (locatableValue $1 :) $2 }
+                  | EncType RawProc                                       { over rawEncTypes (locatableValue $1 :) $2 }
+                  | Enc RawProc                                           { over rawEncs     (locatableValue $1 :) $2 }
+                  | Impl RawProc                                          { over rawImpls    (locatableValue $1 :) $2 }
+                  | LedImpls RawProc                                      {%
   fillMaybe (throwLocalError Nothing $1 "More than one LED block") rawLedImpls (return . locatableValue $ $1) $2
 }
 
+Semi              :: {}
+Semi              : ';'                                                   {}
+                  | Semi ';'                                              {}
+
+Maybe(p)          : {- empty -}                                           { Nothing }
+                  | p                                                     { Just $1 }
+
 Var               :: { Locatable Text }
-Var               : varTok                                       { $1 }
+Var               : varTok                                                { $1 }
 
 Type              :: { Locatable Type }
-Type              : regT int                                     { RegT  `fmap` $2 <* $1 }
-                  | bitsT int                                    { BitsT `fmap` $2 <* $1 }
-                  | intT int                                     { IntT  `fmap` $2 <* $1 }
-                  | instT                                        { InstT <$ $1 }
+Type              : regT int                                              { RegT  `fmap` $2 <* $1 }
+                  | bitsT int                                             { BitsT `fmap` $2 <* $1 }
+                  | intT int                                              { IntT  `fmap` $2 <* $1 }
+                  | instT                                                 { InstT <$ $1 }
 
 BitsExpr          :: { Locatable MaybeBitsExpr }
-BitsExpr          : '(' BitsExpr ')'                             { $2 }
-                  | bits                                         { MaybeConstBitsExpr `fmap` $1 }
-                  | '<' Var '>'                                  {% fmap (\w -> (MaybeEncBitsExpr w `fmap` $2 <* $1 <* $3)) (getLocalVarWidth $2) }
-                  | BitsExpr '++' BitsExpr                       {
+BitsExpr          : '(' BitsExpr ')'                                      { $2 }
+                  | bits                                                  { MaybeConstBitsExpr `fmap` $1 }
+                  | '<' Var '>'                                           {% fmap (\w -> (MaybeEncBitsExpr w `fmap` $2 <* $1 <* $3)) (getLocalVarWidth $2) }
+                  | BitsExpr '++' BitsExpr                                {
   MaybeConcatBitsExpr (liftM2 (+) (sizeOfMaybeEnc . locatableValue $ $1) (sizeOfMaybeEnc . locatableValue $ $3)) `fmap` $1 <*> $3
 }
-                  | BitsExpr '&' BitsExpr                        {%
+                  | BitsExpr '&' BitsExpr                                 {%
   do
     let n1 = sizeOfMaybeEnc . locatableValue $ $1
     let n2 = sizeOfMaybeEnc . locatableValue $ $3
     unless (n1 == n2) . throwLocalError () (liftA2 (,) $1 $3) $ "Mismatched dimensions of bitwise and: Bits " ++ tshow n1 ++ " and Bits " ++ tshow n2
     return $ MaybeAndBitsExpr n1 `fmap` $1 <*> $3
 }
-                  | BitsExpr '|' BitsExpr                        {%
+                  | BitsExpr '|' BitsExpr                                 {%
   do
     let n1 = sizeOfMaybeEnc . locatableValue $ $1
     let n2 = sizeOfMaybeEnc . locatableValue $ $3
     unless (n1 == n2) . throwLocalError () (liftA2 (,) $1 $3) $ "Mismatched dimensions of bitwise or: Bits " ++ tshow n1 ++ " and Bits " ++ tshow n2
     return $ MaybeOrBitsExpr n1 `fmap` $1 <*> $3
 }
-                  | BitsExpr '^' BitsExpr                        {%
+                  | BitsExpr '^' BitsExpr                                 {%
   do
     let n1 = sizeOfMaybeEnc . locatableValue $ $1
     let n2 = sizeOfMaybeEnc . locatableValue $ $3
@@ -136,33 +144,33 @@ BitsExpr          : '(' BitsExpr ')'                             { $2 }
 }
 
 ArgTypeList       :: { Locatable [Type] }
-ArgTypeList       : {- empty -}                                  { pure [] }
-                  | ArgTypeList '<' Type '>'                     { liftA2 (:) $3 $1 <* $2 <* $4 }
+ArgTypeList       : {- empty -}                                           { pure [] }
+                  | ArgTypeList '<' Type '>'                              { liftA2 (:) $3 $1 <* $2 <* $4 }
 
 RegType           :: { Locatable RegType }
-RegType           : Var ':' regT int                             {% defineReg $1 $4 }
+RegType           : Var ':' regT int Semi                                 {% defineReg $1 $4 }
 
 InstType          :: { Locatable InstType }
-InstType          : Var ':' instT ArgTypeList                    {% defineInst $1 (reverse `fmap` $4) }
+InstType          : Var ':' instT ArgTypeList Semi                        {% defineInst $1 (reverse `fmap` $4) }
 
 ButtonType        :: { Locatable ButtonType }
-ButtonType        : Var ':' buttonT int                          {% defineButton $1 $4 }
+ButtonType        : Var ':' buttonT int Semi                              {% defineButton $1 $4 }
 
 MemoryType        :: { Locatable Memory }
-MemoryType        : Var ':' ramT int int                         {% defineMemory $1 $4 $5 }
+MemoryType        : Var ':' ramT int int Semi                             {% defineMemory $1 $4 $5 }
 
-List(p)           : {- empty -}                                  { pure [] }
-                  | List(p) p                                    { liftA2 (:) $2 $1 }
+List(p)           : {- empty -}                                           { pure [] }
+                  | List(p) p                                             { liftA2 (:) $2 $1 }
 
 EncType           :: { Locatable EncType }
-EncType           : '<' Type '>' ':' bitsT int                   {% fmap (<* $1) $ defineEncType $2 $6 }
+EncType           : '<' Type '>' ':' bitsT int Semi                       {% fmap (<* $1) $ defineEncType $2 $6 }
 
 ArgList           :: { Locatable [Locatable Text] }
-ArgList           : {- empty -}                                  { pure [] }
-ArgList           : ArgList '<' Var '>'                          { ($3:) `fmap` $1 <* $2 <* $4 }
+ArgList           : {- empty -}                                           { pure [] }
+ArgList           : ArgList '<' Var '>'                                   { ($3:) `fmap` $1 <* $2 <* $4 }
 
 VarWithArgs       :: { (Locatable Text, Locatable Defn, Locatable [Text]) }
-VarWithArgs       : Var ArgList                                  {%
+VarWithArgs       : Var ArgList                                           {%
   do
     defn <- getIdentifierDefn $1
     case locatableValue defn of
@@ -185,7 +193,7 @@ VarWithArgs       : Var ArgList                                  {%
 }
 
 Enc               :: { Locatable Enc }
-Enc               : '<' VarWithArgs '>' '=' BitsExpr             {% fmap (<* $1) $
+Enc               : '<' VarWithArgs '>' '=' BitsExpr Semi                 {% fmap (<* $1) $
   do
     clearLocalVars
     let (var, defn, args) = $2
@@ -225,14 +233,14 @@ Enc               : '<' VarWithArgs '>' '=' BitsExpr             {% fmap (<* $1)
 }
 
 BoolExpr          :: { Locatable BoolExpr }
-BoolExpr          : Expr '==' Expr                               { EqualityExpr    `fmap` $1 <*> $3 }
-                  | Expr '!=' Expr                               { InequalityExpr `fmap` $1 <*> $3 }
-                  | BoolExpr '&&' BoolExpr                       { LogicalAndExpr  `fmap` $1 <*> $3 }
-                  | BoolExpr '||' BoolExpr                       { LogicalOrExpr   `fmap` $1 <*> $3 }
+BoolExpr          : Expr '==' Expr                                        { EqualityExpr    `fmap` $1 <*> $3 }
+                  | Expr '!=' Expr                                        { InequalityExpr `fmap` $1 <*> $3 }
+                  | BoolExpr '&&' BoolExpr                                { LogicalAndExpr  `fmap` $1 <*> $3 }
+                  | BoolExpr '||' BoolExpr                                { LogicalOrExpr   `fmap` $1 <*> $3 }
 
 Expr              :: { Locatable Expr }
-Expr              : '(' Expr ')'                                 { $2 <* $1 <* $3 }
-                  | Var                                          {%
+Expr              : '(' Expr ')'                                          { $2 <* $1 <* $3 }
+                  | Var                                                   {%
   do
     loc <- isLocalVar . locatableValue $ $1
     if loc
@@ -246,21 +254,21 @@ Expr              : '(' Expr ')'                                 { $2 <* $1 <* $
         Just (MemoryDefn _ _) -> throwLocalError (RegExpr `fmap` $1) $1 $ locatableValue $1 ++ " is a memory, expected a register or a local variable"
         Nothing               -> return $ RegExpr `fmap` $1
 }
-                  | Var '[' Expr ']'                             {% checkMemoryDefined $1 >> return (MemAccessExpr `fmap` $1 <*> $3) }
-                  | int                                          { ConstExpr `fmap` $1 }
-                  | bits                                         { BinaryConstExpr `fmap` $1 }
-                  | Expr '+' Expr                                { OpExpr Add `fmap` $1 <*> $3 }
-                  | Expr '-' Expr                                { OpExpr Sub `fmap` $1 <*> $3 }
-                  | Expr '*' Expr                                { OpExpr Mul `fmap` $1 <*> $3 }
-                  | Expr '/' Expr                                { OpExpr Div `fmap` $1 <*> $3 }
-                  | Expr '++' Expr                               { OpExpr ConcatBits `fmap` $1 <*> $3 }
-                  | Expr '&' Expr                                { OpExpr BitwiseAnd `fmap` $1 <*> $3 }
-                  | Expr '|' Expr                                { OpExpr BitwiseOr `fmap` $1 <*> $3 }
-                  | Expr '^' Expr                                { OpExpr BitwiseXor `fmap` $1 <*> $3 }
-                  | BoolExpr '?' Expr ':' Expr                   { TernaryExpr `fmap` $1 <*> $3 <*> $5 }
+                  | Var '[' Expr ']'                                      {% checkMemoryDefined $1 >> return (MemAccessExpr `fmap` $1 <*> $3) }
+                  | int                                                   { ConstExpr `fmap` $1 }
+                  | bits                                                  { BinaryConstExpr `fmap` $1 }
+                  | Expr '+' Expr                                         { OpExpr Add `fmap` $1 <*> $3 }
+                  | Expr '-' Expr                                         { OpExpr Sub `fmap` $1 <*> $3 }
+                  | Expr '*' Expr                                         { OpExpr Mul `fmap` $1 <*> $3 }
+                  | Expr '/' Expr                                         { OpExpr Div `fmap` $1 <*> $3 }
+                  | Expr '++' Expr                                        { OpExpr ConcatBits `fmap` $1 <*> $3 }
+                  | Expr '&' Expr                                         { OpExpr BitwiseAnd `fmap` $1 <*> $3 }
+                  | Expr '|' Expr                                         { OpExpr BitwiseOr `fmap` $1 <*> $3 }
+                  | Expr '^' Expr                                         { OpExpr BitwiseXor `fmap` $1 <*> $3 }
+                  | BoolExpr '?' Expr ':' Expr                            { TernaryExpr `fmap` $1 <*> $3 <*> $5 }
 
 ImplRule          :: { Locatable ImplRule }
-ImplRule          : Var '<-' Expr                                {%
+ImplRule          : Var '<-' Expr Semi                                    {%
   do
     loc <- isLocalVar . locatableValue $ $1
     if loc
@@ -281,27 +289,27 @@ ImplRule          : Var '<-' Expr                                {%
         Nothing               -> return $ ImplRule `fmap` (RegLValue `fmap` $1) <*> $3
 }
 
-                  | Var '[' Expr ']' '<-' Expr                   {% checkMemoryDefined $1 >> return (ImplRule `fmap` (MemAccessLValue `fmap` $1 <*> $3) <*> $6) }
+                  | Var '[' Expr ']' '<-' Expr Semi                       {% checkMemoryDefined $1 >> return (ImplRule `fmap` (MemAccessLValue `fmap` $1 <*> $3) <*> $6) }
 
 Impl              :: { Locatable Impl }
-Impl              : VarWithArgs '{' List(ImplRule) '}'           {% fmap (<* $4) $
+Impl              : VarWithArgs '{' Maybe(Semi) List(ImplRule) '}' Semi   {% fmap (<* $5) $
   do
     clearLocalVars
     let (var, defn, args) = $1
     addImplemented var
     case locatableValue defn of
-      (RegDefn _)      -> throwLocalError (ButtonImpl `fmap` var <*> $3) var $ "Implementation given for register " ++ locatableValue var
-      (InstDefn ts)    -> return $ InstImpl `fmap` var <*> args <*> $3
-      ButtonDefn       -> return $ ButtonImpl `fmap` var <*> $3
-      (MemoryDefn _ _) -> throwLocalError (ButtonImpl `fmap` var <*> $3) var $ "Implementation given for memory " ++ locatableValue var
+      (RegDefn _)      -> throwLocalError (ButtonImpl `fmap` var <*> $4) var $ "Implementation given for register " ++ locatableValue var
+      (InstDefn ts)    -> return $ InstImpl `fmap` var <*> args <*> $4
+      ButtonDefn       -> return $ ButtonImpl `fmap` var <*> $4
+      (MemoryDefn _ _) -> throwLocalError (ButtonImpl `fmap` var <*> $4) var $ "Implementation given for memory " ++ locatableValue var
 }
 
 LedImpl           :: { Locatable LedImpl }
-LedImpl           : led '[' int ']' '<-' Expr                    { LedImpl `fmap` $3 <*> $3 <*> $6 <* $1 }
-                  | led '[' int ':' int ']' '<-' Expr            { LedImpl `fmap` $3 <*> $5 <*> $8 <* $1 }
+LedImpl           : led '[' int ']' '<-' Expr Semi                        { LedImpl `fmap` $3 <*> $3 <*> $6 <* $1 }
+                  | led '[' int ':' int ']' '<-' Expr Semi                { LedImpl `fmap` $3 <*> $5 <*> $8 <* $1 }
 
 LedImpls          :: { Locatable [LedImpl] }
-LedImpls          : leds '{' List(LedImpl) '}'                   { $3 <* $1 <* $4 }
+LedImpls          : leds '{' Maybe(Semi) List(LedImpl) '}' Semi           { $4 <* $1 <* $5 }
 
 {
 fillMaybe :: Functor f => f (Maybe a) -> Lens' s (Maybe a) -> f a -> s -> f s
