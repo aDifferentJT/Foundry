@@ -70,9 +70,9 @@ import Parser.AST
   , Op(..)
   , Expr(..)
   , Memory(Memory)
-  , RegType(RegType)
-  , InstType(InstType)
-  , ButtonType(ButtonType)
+  , RegType
+  , InstType
+  , ButtonType
   )
 import Parser.Errors hiding (recover, unrecover)
 import qualified Parser.Errors as Errors
@@ -251,7 +251,7 @@ defineReg var n = do
       "Register " ++ locatableValue var ++ " has the same name as a previously defined memory, defined at " ++ prettyPosn ps
     Nothing               -> State.put $
       ParserState{ stateGlobalIdents = Map.insert (locatableValue var) (RegDefn <$ var <*> n) stateGlobalIdents, .. }
-  return $ RegType <$> var <*> n
+  return $ (,) <$> var <*> n
 
 -- | Define an instruction with the given identifier and arguments in the `ParserMonad'
 defineInst :: Locatable Text -> Locatable [Type] -> ParserMonad (Locatable InstType)
@@ -272,7 +272,7 @@ defineInst var ts = do
       , stateToBeImpl = Map.insert (locatableValue var) ("Instruction " ++ locatableValue var ++ " has no implementation", locatablePosns var) stateToBeImpl
       , ..
       }
-  return $ InstType <$> var <*> ts
+  return $ (,) <$> var <*> ts
 
 -- | Define a button with the given identifier and physical id in the `ParserMonad'
 defineButton :: Locatable Text -> Locatable Int -> ParserMonad (Locatable ButtonType)
@@ -293,7 +293,7 @@ defineButton var n = do
       , stateToBeImpl = Map.insert (locatableValue var) ("Button " ++ locatableValue var ++ " has no implementation", locatablePosns var) stateToBeImpl
       , ..
       }
-  return $ ButtonType <$> var <*> n
+  return $ (,) <$> var <*> n
 
 -- | Define a memory with the given identifier, data width and address width in the `ParserMonad'
 defineMemory :: Locatable Text -> Locatable Int -> Locatable Int -> ParserMonad (Locatable Memory)

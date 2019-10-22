@@ -1,5 +1,5 @@
 {
-{-# LANGUAGE LambdaCase, NoImplicitPrelude, OverloadedStrings, RankNTypes, RecordWildCards #-}
+{-# LANGUAGE LambdaCase, NoImplicitPrelude, OverloadedStrings, RankNTypes, RecordWildCards, TupleSections #-}
 {-|
 Module      : Parser
 Description : The parser
@@ -27,6 +27,7 @@ import Control.Monad (unless)
 import Control.Monad.Except (ExceptT(ExceptT))
 import qualified Control.Monad.Trans.State as State
 import Data.List ((!!))
+import qualified Data.Map as Map
 import Data.Text.IO (readFile)
 }
 
@@ -89,13 +90,13 @@ RawProcPrefixSemi : Maybe(Semi) RawProc                                   { $2 }
 
 RawProc           :: { RawProc }
 RawProc           : {- empty -}                                           { initialProc }
-                  | RegType RawProc                                       { over rawRegs (locatableValue $1 :) $2 }
-                  | InstType RawProc                                      { over rawInsts (locatableValue $1 :) $2 }
-                  | ButtonType RawProc                                    { over rawButtons (locatableValue $1 :) $2 }
-                  | MemoryType RawProc                                    { over rawMemorys (locatableValue $1 :) $2 }
+                  | RegType RawProc                                       { over rawRegs     (uncurry Map.insert . locatableValue $ $1) $2 }
+                  | InstType RawProc                                      { over rawInsts    (uncurry Map.insert . locatableValue $ $1) $2 }
+                  | ButtonType RawProc                                    { over rawButtons  (uncurry Map.insert . locatableValue $ $1) $2 }
+                  | MemoryType RawProc                                    { over rawMemorys  (locatableValue $1 :) $2 }
                   | EncType RawProc                                       { over rawEncTypes (locatableValue $1 :) $2 }
-                  | Enc RawProc                                           { over rawEncs     (locatableValue $1 :) $2 }
-                  | Impl RawProc                                          { over rawImpls    (locatableValue $1 :) $2 }
+                  | Enc RawProc                                           { over rawEncs     (uncurry Map.insert . locatableValue $ $1) $2 }
+                  | Impl RawProc                                          { over rawImpls    (uncurry Map.insert . locatableValue $ $1) $2 }
                   | LedImpls RawProc                                      {%
   fillMaybe (throwLocalError Nothing $1 "More than one LED block") rawLedImpls (return . locatableValue $ $1) $2
 }
@@ -198,7 +199,7 @@ VarWithArgs       : Var ArgList                                           {%
         return ($1, InstDefn [] <$ defn, pure [])
 }
 
-Enc               :: { Locatable Enc }
+Enc               :: { Locatable (Text, Enc) }
 Enc               : '<' VarWithArgs '>' '=' BitsExpr Semi                 {% fmap (<* $1) $
   do
     clearLocalVars
@@ -214,9 +215,9 @@ Enc               : '<' VarWithArgs '>' '=' BitsExpr Semi                 {% fma
                 . throwLocalError () $5
                 $ "<" ++ locatableValue var ++ "> is of type Bits " ++ tshow d2 ++ " but I expected Bits " ++ tshow d1
               Nothing -> return ()
-            return $ RegEnc `fmap` var <*> pure bs <* $1 <* $5
+            return $ (,) `fmap` var <*> (RegEnc `fmap` pure bs) <* $1 <* $5
           _                ->
-            throwLocalError (pure (RegEnc "" []) <* $1 <* $5) $5
+            throwLocalError (pure ("", RegEnc []) <* $1 <* $5) $5
             $ "Encoding for register " ++ locatableValue var ++ " is not constant"
       Locatable (InstDefn ts)   ps -> do
         (getEncType . Locatable InstT $ ps) >>= \case
@@ -231,11 +232,11 @@ Enc               : '<' VarWithArgs '>' '=' BitsExpr Semi                 {% fma
           Nothing -> return ()
         e <- fmap (<$ $5) ((recover (ConstBitsExpr []) . unmaybeBitsExpr . locatableValue $ $5) >>= encPrefix)
         when (null . fst . locatableValue $ e) $ throwLocalError () e "Instruction encodings must have a constant prefix"
-        return $ InstEnc `fmap` var <*> args <*> e <* $1
+        return $ (,) `fmap` var <*> (InstEnc `fmap` args <*> e) <* $1
       Locatable  ButtonDefn      _ -> do
-        throwLocalError (RegEnc `fmap` var <*> pure [] <* $1 <* $5) var $ "Encoding given for button " ++ locatableValue var
+        throwLocalError ((,) `fmap` var <*> (RegEnc `fmap` pure []) <* $1 <* $5) var $ "Encoding given for button " ++ locatableValue var
       Locatable (MemoryDefn _ _) _ -> do
-        throwLocalError (RegEnc `fmap` var <*> pure [] <* $1 <* $5) var $ "Encoding given for memory " ++ locatableValue var
+        throwLocalError ((,) `fmap` var <*> (RegEnc `fmap` pure []) <* $1 <* $5) var $ "Encoding given for memory " ++ locatableValue var
 }
 
 BoolExpr          :: { Locatable BoolExpr }
@@ -322,17 +323,17 @@ ImplRule          : Var '<-' Expr Semi                                    {%
     return (ImplRule `fmap` (MemAccessLValue `fmap` $1 <*> $3) <*> $6)
 }
 
-Impl              :: { Locatable Impl }
+Impl              :: { Locatable (Text, Impl) }
 Impl              : VarWithArgs '{' Maybe(Semi) List(ImplRule) '}' Semi   {% fmap (<* $5) $
   do
     clearLocalVars
     let (var, defn, args) = $1
     addImplemented var
     case locatableValue defn of
-      (RegDefn _)      -> throwLocalError (ButtonImpl `fmap` var <*> $4) var $ "Implementation given for register " ++ locatableValue var
-      (InstDefn ts)    -> return $ InstImpl `fmap` var <*> args <*> $4
-      ButtonDefn       -> return $ ButtonImpl `fmap` var <*> $4
-      (MemoryDefn _ _) -> throwLocalError (ButtonImpl `fmap` var <*> $4) var $ "Implementation given for memory " ++ locatableValue var
+      (RegDefn _)      -> throwLocalError ((,) `fmap` var <*> (ButtonImpl `fmap` $4)) var $ "Implementation given for register " ++ locatableValue var
+      (InstDefn ts)    -> return $ (,) `fmap` var <*> (InstImpl `fmap` args <*> $4)
+      ButtonDefn       -> return $ (,) `fmap` var <*> (ButtonImpl `fmap` $4)
+      (MemoryDefn _ _) -> throwLocalError ((,) `fmap` var <*>(ButtonImpl `fmap` $4)) var $ "Implementation given for memory " ++ locatableValue var
 }
 
 LedImpl           :: { Locatable LedImpl }

@@ -49,18 +49,17 @@ import Proc
 import Utils (Bit)
 
 import Control.Lens (makeLenses)
+import qualified Data.Map as Map
+import Data.Map (Map)
 
 -- | A declaration of the width of a register
-data RegType = RegType Text Int
-  deriving Show
+type RegType = (Text, Int)
 
 -- | A declaration of the arguments of an instruction
-data InstType = InstType Text [Type]
-  deriving Show
+type InstType = (Text, [Type])
 
 -- | A declaration of the physical index of a button
-data ButtonType = ButtonType Text Int
-  deriving Show
+type ButtonType = (Text, Int)
 
 -- | An expression for some bits with maybe widths
 data MaybeBitsExpr
@@ -83,31 +82,31 @@ sizeOfMaybeEnc (MaybeXorBitsExpr    n _ _) = n
 
 -- | A definition of an encoding of a register or an instruction
 data Enc
-  = RegEnc Text [Bit]
-  | InstEnc Text [Text] ([Bit], BitsExpr)
+  = RegEnc [Bit]
+  | InstEnc [Text] ([Bit], BitsExpr)
   deriving Show
 
 -- | A definition of an implementation of an instruction or a button
 data Impl
-  = InstImpl Text [Text] [ImplRule]
-  | ButtonImpl Text [ImplRule]
+  = InstImpl [Text] [ImplRule]
+  | ButtonImpl [ImplRule]
   deriving Show
 
 -- | A data structure built by a single pass through the file
 data RawProc = RawProc
-  { _rawRegs     :: [RegType]       -- ^ The register block
-  , _rawInsts    :: [InstType]      -- ^ The instruction block
-  , _rawButtons  :: [ButtonType]    -- ^ The button blocks
-  , _rawMemorys  :: [Memory]        -- ^ The memory blocks
-  , _rawEncTypes :: [EncType]       -- ^ The encoding types
-  , _rawEncs     :: [Enc]           -- ^ The encodings
-  , _rawImpls    :: [Impl]          -- ^ The implementations
-  , _rawLedImpls :: Maybe [LedImpl] -- ^ The led blocks
+  { _rawRegs     :: Map Text Int        -- ^ The register block
+  , _rawInsts    :: Map Text [Type]     -- ^ The instruction block
+  , _rawButtons  :: Map Text Int        -- ^ The button blocks
+  , _rawMemorys  :: [Memory]            -- ^ The memory blocks
+  , _rawEncTypes :: [EncType]           -- ^ The encoding types
+  , _rawEncs     :: Map Text Enc        -- ^ The encodings
+  , _rawImpls    :: Map Text Impl       -- ^ The implementations
+  , _rawLedImpls :: Maybe [LedImpl]     -- ^ The led blocks
   }
   deriving Show
 
 -- | The initial `RawProc` to be added to as we parse the file
 initialProc :: RawProc
-initialProc = RawProc [] [] [] [] [] [] [] Nothing
+initialProc = RawProc Map.empty Map.empty Map.empty [] [] Map.empty Map.empty Nothing
 
 makeLenses ''RawProc
