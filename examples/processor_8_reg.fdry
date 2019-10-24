@@ -51,9 +51,9 @@ progMem : RAM 8 5
 leds {
   led[7:0]   <- progMem[pc]
   led[15:8]  <- r1 -- Should be active register
-  led[19:16] <- pc
-  led[20]    <- 0b01 -- Should be zeroFlag
-  led[23:21] <- 0b00 -- Should be id of active register
+  led[20:16] <- pc
+  led[21]    <- 0b0 -- Should be zeroFlag
+  led[23:22] <- 0b00 -- Should be id of active register
 }
 
 always {

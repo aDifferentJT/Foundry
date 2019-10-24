@@ -42,8 +42,8 @@ progMem : RAM 8 5
 leds {
   led[7:0]   <- progMem[pc]
   led[15:8]  <- accum
-  led[19:16] <- pc
-  led[23:20] <- 0b000
+  led[20:16] <- pc
+  led[23:21] <- 0b000
 }
 
 always {
