@@ -83,6 +83,7 @@ import Utils (Bit, mapLeft)
 import Control.Arrow ((***))
 import Control.Monad (when)
 import Control.Monad.Except (MonadError, throwError)
+import Control.Monad.Trans.Maybe (MaybeT(MaybeT), runMaybeT)
 import Control.Monad.Trans.State (StateT, runStateT, mapStateT, get)
 import qualified Control.Monad.Trans.State as State
 
@@ -422,13 +423,13 @@ getIdentifierDefn Locatable{..} = do
 
 -- | Get the width of the encoding of the given local variable
 getLocalVarEncWidth :: Locatable Text -> ParserMonad (Maybe Int)
-getLocalVarEncWidth var = do
-  Map.lookup (locatableValue var) . stateLocalVars <$> State.get >>= maybe (return Nothing) (getEncWidth . pure)
+getLocalVarEncWidth var =
+  runMaybeT $ MaybeT (Map.lookup (locatableValue var) . stateLocalVars <$> State.get) >>= MaybeT . getEncWidth . pure
 
 -- | Get the width of the encoding of the value contained in the given local variable
 getLocalVarValWidth :: Locatable Text -> ParserMonad (Maybe Int)
-getLocalVarValWidth var = do
-  Map.lookup (locatableValue var) . stateLocalVars <$> State.get >>= maybe (return Nothing) (getValWidth . pure)
+getLocalVarValWidth var =
+  runMaybeT $ MaybeT (Map.lookup (locatableValue var) . stateLocalVars <$> State.get) >>= MaybeT . getValWidth . pure
 
 -- | Check if the given identifier represents a memory
 getMemoryWidth :: Locatable Text -> ParserMonad (Maybe Int)

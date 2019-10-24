@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, FlexibleContexts, LambdaCase, MultiParamTypeClasses, NoImplicitPrelude, OverloadedStrings, TupleSections, RecordWildCards #-}
+{-# LANGUAGE FlexibleInstances, FlexibleContexts, MultiParamTypeClasses, NoImplicitPrelude #-}
 
 {-|
 Module      : Parser.Errors

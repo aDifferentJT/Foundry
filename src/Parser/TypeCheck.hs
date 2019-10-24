@@ -15,8 +15,8 @@ import Data.Maybe (mapMaybe)
 typeCheck :: RawProc -> ParserMonad Proc
 typeCheck RawProc{..} = do
   let regEncs = Map.mapMaybe (\case RegEnc e -> Just e; _ -> Nothing) _rawEncs
-  let regs = (Map.elems $ Map.intersectionWithKey (\n t e -> Reg n t (Just e)) _rawRegs regEncs)
-          ++ (Map.elems . Map.mapWithKey (\n t -> Reg n t Nothing) $ Map.difference _rawRegs regEncs)
+  let regs = Map.elems (Map.intersectionWithKey (\n t e -> Reg n t (Just e)) _rawRegs regEncs)
+          ++ Map.elems (Map.mapWithKey (\n t -> Reg n t Nothing) $ Map.difference _rawRegs regEncs)
   let instEncs = Map.mapMaybe (\case InstEnc vs e -> Just (vs, e); _ -> Nothing) _rawEncs
   let instImpls = Map.mapMaybeWithKey (\n -> \case
         InstImpl vs rs

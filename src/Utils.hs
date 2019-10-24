@@ -82,7 +82,7 @@ mapLeft f = either (Left . f) Right
 
 -- | Map the right side of an Either
 mapRight :: (b1 -> b2) -> Either a b1 -> Either a b2
-mapRight f = either Left (Right . f)
+mapRight = fmap
 
 -- | Map only the head of the list
 mapHead :: (a -> a) -> [a] -> [a]
@@ -117,7 +117,7 @@ selectLargestBy f = first (fst <$>) . foldr g (Nothing, [])
           where fx = f x
 
 intersectionWithKey3 :: Ord k => (k -> a -> b -> c -> d) -> Map k a -> Map k b -> Map k c -> Map k d
-intersectionWithKey3 f m1 m2 m3 = Map.intersectionWithKey (uncurry . f) (Map.intersectionWith (,) m1 m2) m3
+intersectionWithKey3 f m1 = Map.intersectionWithKey (uncurry . f) . Map.intersectionWith (,) m1
 
 -- | Combine two binary functions to give a binary function on pairs
 (****) :: (a -> b -> c)    -- ^ A function \(f\)
