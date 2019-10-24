@@ -40,14 +40,16 @@ module Parser.Monad
   , checkInstDefined
   , checkButtonDefined
   , getIdentifierDefn
-  , getLocalVarWidth
+  , getLocalVarEncWidth
+  , getLocalVarValWidth
   , getMemoryWidth
   , clearLocalVars
   , defineEncType
-  , getEncType
+  , getEncWidth
   , unmaybeBitsExpr
   , encPrefix
-  , widthOfExpr
+  , makeOpExpr
+  , makeTernaryExpr
   , runParser'
   , runParser
   ) where
@@ -60,16 +62,15 @@ import Parser.AlexPosn
   )
 
 import Parser.AST
-  ( Type
-    ( BitsT
-    , IntT
-    )
+  ( Type(..)
   , EncType(EncType)
   , MaybeBitsExpr(..)
   , BitsExpr(..)
   , sizeOfEnc
   , Op(..)
+  , BoolExpr
   , Expr(..)
+  , widthOfExpr
   , Memory(Memory)
   , RegType
   , InstType
@@ -166,7 +167,7 @@ data ParserState = ParserState
   , stateGlobalIdents :: Map Text (Locatable Defn)                   -- ^ The global variables that have been defined so far
   , stateToBeImpl     :: Map Text (Text, Maybe (AlexPosn, AlexPosn)) -- ^ The implementations that are still needed and the errors if they are not
   , stateToBeEnc      :: Map Text (Text, Maybe (AlexPosn, AlexPosn)) -- ^ The encodings that are still needed and the errors if they are not
-  , stateEncTypes     :: Map Type Int                                -- ^ The encoding types that have so far been defined
+  , stateEncWidths    :: Map Type Int                                -- ^ The encoding types that have so far been defined
   }
 
 -- | Identifiers that should be predefined
@@ -420,9 +421,14 @@ getIdentifierDefn Locatable{..} = do
     Just d  -> return $ Just <$> d
 
 -- | Get the width of the encoding of the given local variable
-getLocalVarWidth :: Locatable Text -> ParserMonad (Maybe Int)
-getLocalVarWidth var = do
-  Map.lookup (locatableValue var) . stateLocalVars <$> State.get >>= maybe (return Nothing) (getEncType . pure)
+getLocalVarEncWidth :: Locatable Text -> ParserMonad (Maybe Int)
+getLocalVarEncWidth var = do
+  Map.lookup (locatableValue var) . stateLocalVars <$> State.get >>= maybe (return Nothing) (getEncWidth . pure)
+
+-- | Get the width of the encoding of the value contained in the given local variable
+getLocalVarValWidth :: Locatable Text -> ParserMonad (Maybe Int)
+getLocalVarValWidth var = do
+  Map.lookup (locatableValue var) . stateLocalVars <$> State.get >>= maybe (return Nothing) (getValWidth . pure)
 
 -- | Check if the given identifier represents a memory
 getMemoryWidth :: Locatable Text -> ParserMonad (Maybe Int)
@@ -451,20 +457,28 @@ clearLocalVars = do
 defineEncType :: Locatable Type -> Locatable Int -> ParserMonad (Locatable EncType)
 defineEncType t n = do
   ParserState{..} <- State.get
-  when (Map.member (locatableValue t) stateEncTypes) . throwLocalError () t $ "Encoding of type " ++ tshow t ++ " redefined"
-  State.put $ ParserState{ stateEncTypes = Map.insert (locatableValue t) (locatableValue n) stateEncTypes, .. }
+  when (Map.member (locatableValue t) stateEncWidths) . throwLocalError () t $ "Encoding of type " ++ tshow t ++ " redefined"
+  State.put $ ParserState{ stateEncWidths = Map.insert (locatableValue t) (locatableValue n) stateEncWidths, .. }
   return $ EncType <$> t <*> n
 
--- | Get the type of the given encoding
-getEncType :: Locatable Type -> ParserMonad (Maybe Int)
-getEncType Locatable{..} = case locatableValue of
+-- | Get the width of the given encoding
+getEncWidth :: Locatable Type -> ParserMonad (Maybe Int)
+getEncWidth Locatable{..} = case locatableValue of
   (BitsT n) -> return . Just $ n
-  (IntT n)  -> return . Just $ n
+  (IntT  n) -> return . Just $ n
   t         -> do
     ParserState{..} <- State.get
-    case Map.lookup t stateEncTypes of
+    case Map.lookup t stateEncWidths of
       Just n  -> return . Just $ n
       Nothing -> throwLocalError Nothing Locatable{..} $ "Encoding of type " ++ tshow t ++ " not defined"
+
+-- | Get the width of the given encoding
+getValWidth :: Locatable Type -> ParserMonad (Maybe Int)
+getValWidth Locatable{..} = case locatableValue of
+  (BitsT n) -> return . Just $ n
+  (IntT  n) -> return . Just $ n
+  (RegT  n) -> return . Just $ n
+  InstT     -> throwLocalErrorAt Nothing locatablePosns "Instruction has no value"
 
 unmaybeBitsExpr :: MaybeBitsExpr -> ParserMonad BitsExpr
 unmaybeBitsExpr (MaybeConstBitsExpr bs)              = return $ ConstBitsExpr bs
@@ -476,44 +490,42 @@ unmaybeBitsExpr (MaybeXorBitsExpr    n e1 e2) = XorBitsExpr (fromMaybe 0 n) <$> 
 
 -- | Get the constant prefix of the given expression
 encPrefix :: BitsExpr -> ParserMonad ([Bit], BitsExpr)
-encPrefix e = case e of
-  ConstBitsExpr bs       -> return (bs, ConstBitsExpr [])
-  EncBitsExpr n v        -> return ([], EncBitsExpr n v)
-  ConcatBitsExpr _ e1 e2 ->
-    encPrefix e1 >>= \case
-      (bs, ConstBitsExpr []) -> first (bs ++) <$> encPrefix e2
-      (bs1, e1'            ) -> return (bs1, ConcatBitsExpr (sizeOfEnc e1' + sizeOfEnc e2) e1' e2)
-  AndBitsExpr n e1 e2    -> return ([], AndBitsExpr n e1 e2)
-  OrBitsExpr  n e1 e2    -> return ([], OrBitsExpr  n e1 e2)
-  XorBitsExpr n e1 e2    -> return ([], XorBitsExpr n e1 e2)
+encPrefix (ConstBitsExpr bs)       = return (bs, ConstBitsExpr [])
+encPrefix (EncBitsExpr n v)        = return ([], EncBitsExpr n v)
+encPrefix (ConcatBitsExpr _ e1 e2) = encPrefix e1 >>= \case
+  (bs, ConstBitsExpr []) -> first (bs ++) <$> encPrefix e2
+  (bs1, e1')             -> return (bs1, ConcatBitsExpr (sizeOfEnc e1' + sizeOfEnc e2) e1' e2)
+encPrefix (AndBitsExpr n e1 e2)    = return ([], AndBitsExpr n e1 e2)
+encPrefix (OrBitsExpr  n e1 e2)    = return ([], OrBitsExpr  n e1 e2)
+encPrefix (XorBitsExpr n e1 e2)    = return ([], XorBitsExpr n e1 e2)
 
-widthOfExpr :: Locatable Expr -> ParserMonad (Maybe Int)
-widthOfExpr Locatable{..} = case locatableValue of
-  VarExpr n _             -> return n
-  RegExpr n _             -> return n
-  MemAccessExpr n _ _     -> return n
-  ConstExpr _             -> return Nothing
-  BinaryConstExpr bs      -> return . Just . length $ bs
-  OpExpr ConcatBits e1 e2 ->
-    liftM2 (liftM2 (+)) (widthOfExpr Locatable{ locatableValue = e1, .. }) (widthOfExpr Locatable{ locatableValue = e2, .. })
-  OpExpr op e1 e2         ->
-    liftM2 (,) (widthOfExpr Locatable{ locatableValue = e1, .. }) (widthOfExpr Locatable{ locatableValue = e2, .. }) >>= \case
-      (Just n1, Just n2)
-        | n1 == n2  -> return . Just $ n1
-        | otherwise -> throwLocalErrorAt Nothing locatablePosns
-            $ "Cannot " ++ tshow op ++ " operands of widths " ++ tshow n1 ++ " and " ++ tshow n2
-      (Just n,  Nothing) -> return . Just $ n
-      (Nothing, Just n)  -> return . Just $ n
-      (Nothing, Nothing) -> return Nothing
-  TernaryExpr _ e1 e2     ->
-    liftM2 (,) (widthOfExpr Locatable{ locatableValue = e1, .. }) (widthOfExpr Locatable{ locatableValue = e2, .. }) >>= \case
-      (Just n1, Just n2)
-        | n1 == n2  -> return . Just $ n1
-        | otherwise -> throwLocalErrorAt Nothing locatablePosns
-            $ "Cannot have ternary expression with operands of widths " ++ tshow n1 ++ " and " ++ tshow n2
-      (Just n,  Nothing) -> return . Just $ n
-      (Nothing, Just n)  -> return . Just $ n
-      (Nothing, Nothing) -> return Nothing
+makeOpExpr :: Op -> Locatable Expr -> Locatable Expr -> ParserMonad (Locatable Expr)
+makeOpExpr ConcatBits e1 e2 =
+  return $ OpExpr (liftM2 (+) (widthOfExpr . locatableValue $ e1) (widthOfExpr . locatableValue $ e2)) ConcatBits <$> e1 <*> e2
+makeOpExpr op e1 e2         = do
+  let e1' = locatableValue e1
+  let e2' = locatableValue e2
+  n <- case (widthOfExpr . locatableValue $ e1, widthOfExpr . locatableValue $ e2) of
+    (Just n1, Just n2)
+      | n1 == n2  -> return . Just $ n1
+      | otherwise -> throwLocalError Nothing (e1 <* e2)
+          $ "Cannot " ++ tshow op ++ " operands of widths " ++ tshow n1 ++ " and " ++ tshow n2
+    (Just n,  Nothing) -> return . Just $ n
+    (Nothing, Just n)  -> return . Just $ n
+    (Nothing, Nothing) -> return Nothing
+  return $ OpExpr n op <$> e1 <*> e2
+
+makeTernaryExpr :: Locatable BoolExpr -> Locatable Expr -> Locatable Expr -> ParserMonad (Locatable Expr)
+makeTernaryExpr c e1 e2 = do
+  n <- case (widthOfExpr . locatableValue $ e1, widthOfExpr . locatableValue $ e2) of
+    (Just n1, Just n2)
+      | n1 == n2  -> return . Just $ n1
+      | otherwise -> throwLocalError Nothing (e1 <* e2)
+          $ "Cannot have ternary expression with operands of widths " ++ tshow n1 ++ " and " ++ tshow n2
+    (Just n,  Nothing) -> return . Just $ n
+    (Nothing, Just n)  -> return . Just $ n
+    (Nothing, Nothing) -> return Nothing
+  return $ TernaryExpr n (locatableValue c) <$> e1 <*> e2
 
 runParser' :: ParserMonad a -> Text -> Either [(Text, Maybe (AlexPosn, AlexPosn))] a
 runParser' m = runErrors . (fst <$>) . runStateT m . initialParserState

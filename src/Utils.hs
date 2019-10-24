@@ -25,6 +25,8 @@ module Utils
   , intersectionWithKey3
   , (****)
   , joinTailsToHeads
+  , whileM
+  , untilM
   ) where
 
 import Control.Arrow ((***))
@@ -61,8 +63,8 @@ data Endianness
 -- | Turn some bits into a number
 bitsToInt :: Endianness -> [Bit] -> Int
 bitsToInt e = case e of
-  Little -> foldr f 0
-  Big    -> foldl (flip f) 0
+  Little -> foldl (flip f) 0
+  Big    -> foldr f 0
   where f :: Bit -> Int -> Int
         f b = (fromEnum b .|.) . flip shiftL 1
 
@@ -128,4 +130,12 @@ f **** g = uncurry (***) . (f *** g)
 joinTailsToHeads :: Monoid m => m -> [[m]] -> [m]
 joinTailsToHeads _ [x]        = x
 joinTailsToHeads y (x1:x2:xs) = mapLast ((++ (fromMaybe mempty . headMay $ x2)) . (++ y)) x1 ++ joinTailsToHeads y ((fromMaybe mempty . tailMay $ x2) : xs)
+
+whileM :: Monad m => Int -> (a -> Bool) -> m a -> m (Maybe a)
+whileM 0 _ _ = return Nothing
+whileM n f m = m >>= \x -> if f x then whileM (n-1) f m else return . Just $ x
+
+untilM :: Monad m => Int -> (a -> Bool) -> m a -> m (Maybe a)
+untilM 0 _ _ = return Nothing
+untilM n f m = m >>= \x -> if f x then return . Just $ x else untilM (n-1) f m
 

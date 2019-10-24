@@ -149,11 +149,11 @@ genExpr argTypes ruleArgs (encArgs, (bits, enc)) e = case e of
   MemAccessExpr _ mem _ -> V.Variable $ mem ++ "_out"
   ConstExpr n           -> V.Literal n
   BinaryConstExpr bs    -> V.Bits bs
-  OpExpr o e1 e2        -> V.BinaryOp
+  OpExpr _ o e1 e2      -> V.BinaryOp
     (genExpr argTypes ruleArgs (encArgs, (bits, enc)) e1)
     (genOp o)
     (genExpr argTypes ruleArgs (encArgs, (bits, enc)) e2)
-  TernaryExpr b e1 e2   -> V.TernaryOp
+  TernaryExpr _ b e1 e2 -> V.TernaryOp
     (genBoolExpr argTypes ruleArgs (encArgs, (bits, enc)) b)
     (genExpr argTypes ruleArgs (encArgs, (bits, enc)) e1)
     (genExpr argTypes ruleArgs (encArgs, (bits, enc)) e2)
@@ -412,15 +412,15 @@ genMemoryAddr Proc{..} (Memory name _ addressWidth) =
           | otherwise   = memAccessForExpr expr
         memoryPred (ImplRule _ expr) = memAccessForExpr expr
         memAccessForExpr :: Expr -> Maybe Expr
-        memAccessForExpr (VarExpr _ _)         = Nothing
-        memAccessForExpr (RegExpr _ _)         = Nothing
-        memAccessForExpr (MemAccessExpr _ n e) = if n == name then Just e else memAccessForExpr e
-        memAccessForExpr (ConstExpr _)         = Nothing
-        memAccessForExpr (BinaryConstExpr _)   = Nothing
-        memAccessForExpr (OpExpr _ e1 e2)      = case memAccessForExpr e1 of
+        memAccessForExpr (VarExpr _ _)              = Nothing
+        memAccessForExpr (RegExpr _ _)              = Nothing
+        memAccessForExpr (MemAccessExpr _ n e)      = if n == name then Just e else memAccessForExpr e
+        memAccessForExpr (ConstExpr _)              = Nothing
+        memAccessForExpr (BinaryConstExpr _)        = Nothing
+        memAccessForExpr (OpExpr _ _ e1 e2)         = case memAccessForExpr e1 of
           Just e1' -> Just e1'
           Nothing  -> memAccessForExpr e2
-        memAccessForExpr (TernaryExpr b e1 e2) = case memAccessForBoolExpr b of
+        memAccessForExpr (TernaryExpr _ b e1 e2)    = case memAccessForBoolExpr b of
           Just b' -> Just b'
           Nothing -> case memAccessForExpr e1 of
             Just e1' -> Just e1'

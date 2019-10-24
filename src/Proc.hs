@@ -18,6 +18,7 @@ module Proc
   , Op(..)
   , BoolExpr(..)
   , Expr(..)
+  , widthOfExpr
   , LValue(..)
   , ImplRule(..)
   , LedImpl(..)
@@ -107,9 +108,18 @@ data Expr
   | MemAccessExpr (Maybe Int) Text Expr -- ^ An access into memory
   | ConstExpr Int                       -- ^ A constant
   | BinaryConstExpr [Bit]               -- ^ A binary constant (some bits)
-  | OpExpr Op Expr Expr                 -- ^ A binary operation
-  | TernaryExpr BoolExpr Expr Expr      -- ^ A C-style ternary expression
+  | OpExpr (Maybe Int) Op Expr Expr                 -- ^ A binary operation
+  | TernaryExpr (Maybe Int) BoolExpr Expr Expr      -- ^ A C-style ternary expression
   deriving Show
+
+widthOfExpr :: Expr -> Maybe Int 
+widthOfExpr (VarExpr n _)         = n
+widthOfExpr (RegExpr n _)         = n
+widthOfExpr (MemAccessExpr n _ _) = n
+widthOfExpr (ConstExpr _)         = Nothing
+widthOfExpr (BinaryConstExpr bs)  = Just . length $ bs
+widthOfExpr (OpExpr n _ _ _)      = n
+widthOfExpr (TernaryExpr n _ _ _) = n
 
 -- | An expression into which we can assign a value
 data LValue

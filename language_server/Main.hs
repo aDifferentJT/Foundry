@@ -5,7 +5,11 @@ module Main(main) where
 import ClassyPrelude hiding (Handler)
 
 import Parser (parse')
-import Parser.AlexPosn (AlexPosn(AlexPosn))
+import Parser.AlexPosn (AlexPosn(AlexPosn), Locatable(..))
+import Parser.Lexer (Token(..), readToken)
+import Parser.Monad (runParser')
+
+import Utils (Endianness(Little), bitsToInt, untilM)
 
 import Data.Maybe (fromMaybe, listToMaybe)
 
@@ -17,9 +21,9 @@ import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Reader (ReaderT, runReaderT, ask)
 import Control.Monad.Trans.Maybe (MaybeT(MaybeT), runMaybeT)
-import Data.Either.Combinators (leftToMaybe)
+import Data.Either.Combinators (leftToMaybe, rightToMaybe)
 import qualified Data.Map as Map
-import Data.Rope.UTF16 (toText)
+import Data.Rope.UTF16 (toText, splitAtLine)
 import Data.SortedList (toSortedList)
 import Data.Text (Text)
 import qualified Data.Text as Text
@@ -38,10 +42,16 @@ data Config = Config
 data ReactorInput
   = SendMessage FromServerMessage
   | ShowDiagnostics Uri
+  | ShowHover HoverRequest
 
 toRange :: Maybe (AlexPosn, AlexPosn) -> Range
 toRange (Just (AlexPosn _ l1 c1, AlexPosn _ l2 c2)) = Range (Position (l1 - 1) (c1 - 1)) (Position (l2 - 1) (c2 - 1))
 toRange Nothing                                     = Range (Position 0 0) (Position 0 0)
+
+getTokenInformation :: Token -> Maybe Text
+getTokenInformation (Bits (Locatable bs _)) = Just $
+  "0b" ++ (mconcat . map tshow $ bs) ++ " = " ++ (tshow . bitsToInt Little $ bs)
+getTokenInformation _ = Nothing
 
 reactor :: LspFuncs Config -> TMChan ReactorInput -> IO ()
 reactor LspFuncs{..} ch = forever . ((liftIO . atomically . readTMChan $ ch) >>=) $ \case
@@ -66,6 +76,35 @@ reactor LspFuncs{..} ch = forever . ((liftIO . atomically . readTMChan $ ch) >>=
                 )
               ]
         lift . publishDiagnosticsFunc 100 (toNormalizedUri uri) (Just version) $ ds
+  Just (ShowHover req) -> void . runMaybeT $ do
+    VirtualFile _ rope _ <- MaybeT . getVirtualFileFunc . toNormalizedUri $ req ^. params . textDocument . uri
+    let Position lineNum col = req ^. params . position
+    let line = toText . fst . splitAtLine 1 . snd . splitAtLine lineNum $ rope
+    tok <- MaybeT
+      . return
+      . join
+      . rightToMaybe
+      . runParser'
+        ( untilM
+            (length line)
+            (\(Locatable _ (Just (AlexPosn _ _ c1, AlexPosn _ _ c2))) -> c1 <= col + 1 && col + 1 < c2)
+            readToken
+          )
+      $ line
+    info <- MaybeT
+      . return
+      . getTokenInformation
+      . locatableValue
+      $ tok
+    lift
+      . sendFunc
+      . RspHover
+      . makeResponseMessage req
+      . Just
+      . flip Hover Nothing
+      . HoverContents
+      . MarkupContent MkPlainText
+      $ info
   Nothing -> return ()
 
 -- InitializeCallbacks
@@ -83,13 +122,11 @@ onStartup ch funcs = do
 -- Handlers
 hoverHandler                                 :: TMChan ReactorInput -> Handler HoverRequest
 hoverHandler ch req                          = do
+  let ps = req ^. params
   atomically
-  . writeTMChan ch
-  . SendMessage 
-  . RspHover
-  . makeResponseMessage req
-  . Just
-  $ Hover (HoverContents (MarkupContent MkPlainText "Hover text")) Nothing
+    . writeTMChan ch
+    . ShowHover
+    $ req
 
 completionHandler                            :: Handler CompletionRequest
 completionHandler req                        = do
@@ -176,16 +213,16 @@ didChangeConfigurationParamsHandler          = Nothing
 didOpenTextDocumentNotificationHandler       :: TMChan ReactorInput -> Handler DidOpenTextDocumentNotification
 didOpenTextDocumentNotificationHandler ch notif =
   atomically
-  . writeTMChan ch
-  . ShowDiagnostics
-  $ notif ^. params . textDocument . uri
+    . writeTMChan ch
+    . ShowDiagnostics
+    $ notif ^. params . textDocument . uri
 
 didChangeTextDocumentNotificationHandler     :: TMChan ReactorInput -> Handler DidChangeTextDocumentNotification
 didChangeTextDocumentNotificationHandler ch notif =
   atomically
-  . writeTMChan ch
-  . ShowDiagnostics
-  $ notif ^. params . textDocument . uri
+    . writeTMChan ch
+    . ShowDiagnostics
+    $ notif ^. params . textDocument . uri
 
 didCloseTextDocumentNotificationHandler      :: TMChan ReactorInput -> Handler DidCloseTextDocumentNotification
 didCloseTextDocumentNotificationHandler ch notif = return ()
@@ -193,9 +230,9 @@ didCloseTextDocumentNotificationHandler ch notif = return ()
 didSaveTextDocumentNotificationHandler       :: TMChan ReactorInput -> Handler DidSaveTextDocumentNotification
 didSaveTextDocumentNotificationHandler ch notif =
   atomically
-  . writeTMChan ch
-  . ShowDiagnostics
-  $ notif ^. params . textDocument . uri
+    . writeTMChan ch
+    . ShowDiagnostics
+    $ notif ^. params . textDocument . uri
 
 didChangeWatchedFilesNotificationHandler     :: Maybe (Handler DidChangeWatchedFilesNotification)
 didChangeWatchedFilesNotificationHandler     = Nothing
