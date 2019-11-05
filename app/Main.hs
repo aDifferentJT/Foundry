@@ -7,6 +7,7 @@ import ClassyPrelude hiding (getArgs)
 import Parser (parseFile)
 import CodeGen (genCode)
 import Assembler.GenAssembler (genAssembler)
+import IceBurn (burn)
 
 import Control.Monad (when)
 import Control.Monad.Except (ExceptT, runExceptT, throwError)
@@ -27,7 +28,8 @@ main = runExceptT
     ast <- parseFile fn
     lift . writeFileUtf8 (fn -<.> ".v") . genCode $ ast
     when shouldGenAssembler . lift . genAssembler (dropExtensions . replaceBaseName fn $ (takeBaseName fn ++ "_assembler")) $ ast
-  ) >>= \case
+    void burn
+    ) >>= \case
     Left err -> putStrLn err
     Right () -> return ()
 

@@ -13,6 +13,7 @@ module Parser.Errors
   , runErrors
   , recover
   , unrecover
+  , forgive
   , throwErrors
   ) where
 
@@ -41,6 +42,10 @@ unrecover :: Errors e a -> Errors e a
 unrecover (Recovered [] x) = Recovered [] x
 unrecover (Recovered es _) = Unrecovered es
 unrecover (Unrecovered es) = Unrecovered es
+
+forgive :: Errors e a -> Errors e a
+forgive (Recovered _ x)  = Recovered [] x
+forgive (Unrecovered es) = Unrecovered es
 
 instance Functor (Errors e) where
   fmap f (Recovered es x) = Recovered es (f x)

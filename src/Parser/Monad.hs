@@ -17,6 +17,7 @@ module Parser.Monad
   , alexInputPrevChar
   , Defn(RegDefn, InstDefn, ButtonDefn, MemoryDefn)
   , ParserState(..)
+  , initialParserState
   , ParserMonad
   , prettyPosn
   , Locatable(Locatable)

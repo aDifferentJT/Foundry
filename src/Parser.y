@@ -8,7 +8,7 @@ Licence     : GPL-3
 Maintainer  : jonathan.tanner@sjc.ox.ac.uk
 Stability   : experimental
 -}
-module Parser (parse', parse, parseFile) where
+module Parser (parseM, parse', parse, parseFile) where
 
 import ClassyPrelude hiding (readFile)
 
@@ -86,7 +86,7 @@ import Data.Text.IO (readFile)
 %%
 
 RawProcPrefixSemi :: { RawProc }
-RawProcPrefixSemi : Maybe(Semi) RawProc                                   { $2 }
+RawProcPrefixSemi : Maybe(semi) RawProc                                   { $2 }
 
 RawProc           :: { RawProc }
 RawProc           : {- empty -}                                           { initialProc }
@@ -101,9 +101,14 @@ RawProc           : {- empty -}                                           { init
   fillMaybe (throwLocalError Nothing $1 "More than one LED block") rawLedImpls (return . locatableValue $ $1) $2
 }
 
-Semi              :: {}
-Semi              : ';'                                                   {}
-                  | Semi ';'                                              {}
+semi              :: { Locatable Token }
+semi              : ';'                                                   { $1 }
+                  | semi ';'                                              { $1 <* $2 }
+                  | error                                                 { $1 }
+
+close             :: { Locatable Token }
+close             : '}'                                                   { $1 }
+                  | error                                                 { $1 }
 
 Maybe(p)          : {- empty -}                                           { Nothing }
                   | p                                                     { Just $1 }
@@ -155,22 +160,22 @@ ArgTypeList       : {- empty -}                                           { pure
                   | ArgTypeList '<' Type '>'                              { liftA2 (:) $3 $1 <* $2 <* $4 }
 
 RegType           :: { Locatable RegType }
-RegType           : Var ':' regT int Semi                                 {% defineReg $1 $4 }
+RegType           : Var ':' regT int semi                                 {% defineReg $1 $4 }
 
 InstType          :: { Locatable InstType }
-InstType          : Var ':' instT ArgTypeList Semi                        {% defineInst $1 (reverse `fmap` $4) }
+InstType          : Var ':' instT ArgTypeList semi                        {% defineInst $1 (reverse `fmap` $4) }
 
 ButtonType        :: { Locatable ButtonType }
-ButtonType        : Var ':' buttonT int Semi                              {% defineButton $1 $4 }
+ButtonType        : Var ':' buttonT int semi                              {% defineButton $1 $4 }
 
 MemoryType        :: { Locatable Memory }
-MemoryType        : Var ':' ramT int int Semi                             {% defineMemory $1 $4 $5 }
+MemoryType        : Var ':' ramT int int semi                             {% defineMemory $1 $4 $5 }
 
 List(p)           : {- empty -}                                           { pure [] }
                   | List(p) p                                             { liftA2 (:) $2 $1 }
 
 EncType           :: { Locatable EncType }
-EncType           : '<' Type '>' ':' bitsT int Semi                       {% fmap (<* $1) $ defineEncType $2 $6 }
+EncType           : '<' Type '>' ':' bitsT int semi                       {% fmap (<* $1) $ defineEncType $2 $6 }
 
 ArgList           :: { Locatable [Locatable Text] }
 ArgList           : {- empty -}                                           { pure [] }
@@ -200,7 +205,7 @@ VarWithArgs       : Var ArgList                                           {%
 }
 
 Enc               :: { Locatable (Text, Enc) }
-Enc               : '<' VarWithArgs '>' '=' BitsExpr Semi                 {% fmap (<* $1) $
+Enc               : '<' VarWithArgs '>' '=' BitsExpr semi                 {% fmap (<* $1) $
   do
     clearLocalVars
     let (var, defn, args) = $2
@@ -280,7 +285,7 @@ Expr              : '(' Expr ')'                                          { $2 <
                   | BoolExpr '?' Expr ':' Expr                            {% makeTernaryExpr $1 $3 $5 }
 
 ImplRule          :: { Locatable ImplRule }
-ImplRule          : Var '<-' Expr Semi                                    {%
+ImplRule          : Var '<-' Expr semi                                    {%
   getLocalVarValWidth $1 >>= \case
     Just d1 -> do
       case widthOfExpr . locatableValue $ $3 of
@@ -311,7 +316,7 @@ ImplRule          : Var '<-' Expr Semi                                    {%
         Nothing               -> return $ ImplRule `fmap` (RegLValue `fmap` $1) <*> $3
 }
 
-                  | Var '[' Expr ']' '<-' Expr Semi                       {%
+                  | Var '[' Expr ']' '<-' Expr semi                       {%
   do
     getMemoryWidth $1 >>= \case
       Just d1 ->
@@ -325,7 +330,7 @@ ImplRule          : Var '<-' Expr Semi                                    {%
 }
 
 Impl              :: { Locatable (Text, Impl) }
-Impl              : VarWithArgs '{' Maybe(Semi) List(ImplRule) '}' Semi   {% fmap (<* $5) $
+Impl              : VarWithArgs '{' Maybe(semi) List(ImplRule) close semi {% fmap (<* $5) $
   do
     clearLocalVars
     let (var, defn, args) = $1
@@ -338,7 +343,7 @@ Impl              : VarWithArgs '{' Maybe(Semi) List(ImplRule) '}' Semi   {% fma
 }
 
 LedImpl           :: { Locatable LedImpl }
-LedImpl           : led '[' int ']' '<-' Expr Semi                        {%
+LedImpl           : led '[' int ']' '<-' Expr semi                        {%
   do
     case widthOfExpr . locatableValue $ $6 of
       Just d2 ->
@@ -347,7 +352,7 @@ LedImpl           : led '[' int ']' '<-' Expr Semi                        {%
       Nothing -> return ()
     return $ LedImpl `fmap` $3 <*> $3 <*> $6 <* $1
 }
-                  | led '[' int ':' int ']' '<-' Expr Semi                {%
+                  | led '[' int ':' int ']' '<-' Expr semi                {%
   do
     let d1 = abs (locatableValue $5 - locatableValue $3) + 1
     case widthOfExpr . locatableValue $ $8 of
@@ -359,7 +364,7 @@ LedImpl           : led '[' int ']' '<-' Expr Semi                        {%
 }
 
 LedImpls          :: { Locatable [LedImpl] }
-LedImpls          : leds '{' Maybe(Semi) List(LedImpl) '}' Semi           { $4 <* $1 <* $5 }
+LedImpls          : leds '{' Maybe(semi) List(LedImpl) close semi         { $4 <* $1 <* $5 }
 
 {
 fillMaybe :: Functor f => f (Maybe a) -> Lens' s (Maybe a) -> f a -> s -> f s

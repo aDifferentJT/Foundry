@@ -11,5 +11,5 @@ TESTS := $(wildcard *.fdry)
 test: $(patsubst %.fdry,test-%,$(TESTS))
 
 test-%: %.fdry
-	stack exec Foundry-exe $<
+	/home/jt/.local/bin/Foundry-exe $<
 

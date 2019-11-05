@@ -4,10 +4,11 @@ module Main(main) where
 
 import ClassyPrelude hiding (Handler)
 
-import Parser (parse')
+import Parser (parseM, parse')
 import Parser.AlexPosn (AlexPosn(AlexPosn), Locatable(..))
+import Parser.Errors (runErrors, forgive)
 import Parser.Lexer (Token(..), readToken)
-import Parser.Monad (runParser')
+import Parser.Monad (Defn(..), ParserState(..), initialParserState, runParser')
 
 import Utils (Endianness(Little), bitsToInt, untilM)
 
@@ -21,6 +22,7 @@ import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Reader (ReaderT, runReaderT, ask)
 import Control.Monad.Trans.Maybe (MaybeT(MaybeT), runMaybeT)
+import Control.Monad.Trans.State (runStateT)
 import Data.Either.Combinators (leftToMaybe, rightToMaybe)
 import qualified Data.Map as Map
 import Data.Rope.UTF16 (toText, splitAtLine)
@@ -43,6 +45,7 @@ data ReactorInput
   = SendMessage FromServerMessage
   | ShowDiagnostics Uri
   | ShowHover HoverRequest
+  | ShowCompletion CompletionRequest
 
 toRange :: Maybe (AlexPosn, AlexPosn) -> Range
 toRange (Just (AlexPosn _ l1 c1, AlexPosn _ l2 c2)) = Range (Position (l1 - 1) (c1 - 1)) (Position (l2 - 1) (c2 - 1))
@@ -105,6 +108,58 @@ reactor LspFuncs{..} ch = forever . ((liftIO . atomically . readTMChan $ ch) >>=
       . HoverContents
       . MarkupContent MkPlainText
       $ info
+  Just (ShowCompletion req) -> void . runMaybeT $ do
+    VirtualFile _ rope _ <- MaybeT . getVirtualFileFunc . toNormalizedUri $ req ^. params . textDocument . uri
+    ParserState{..} <- MaybeT . return . rightToMaybe . runErrors . forgive . (snd <$>) . runStateT parseM . initialParserState . toText . fst . splitAtLine (req ^. params . position . line + 1) $ rope
+    --ParserState{..} <- MaybeT . return . rightToMaybe . runErrors . forgive . (snd <$>) . runStateT parseM . initialParserState . toText $ rope
+    lift
+      . sendFunc
+      . RspCompletion
+      . makeResponseMessage req
+      . Completions
+      . List
+      $ [ CompletionItem 
+            var
+            (Just CiVariable)
+            (Just $ "Of type " ++ tshow t)
+            Nothing
+            (Just False)
+            Nothing
+            Nothing
+            Nothing
+            Nothing
+            Nothing
+            Nothing
+            Nothing
+            Nothing
+            Nothing
+            Nothing
+        | (var, t) <- Map.toList stateLocalVars
+        ]
+      ++ [ CompletionItem 
+             var
+             (Just CiVariable)
+             ( Just case defn of
+                 RegDefn  n     -> "A register of width " ++ tshow n
+                 InstDefn _     -> "An instruction"
+                 ButtonDefn     -> "A button" ++ tshow (req ^. params . position . line)
+                 MemoryDefn a d -> "A memory with address width " ++ tshow a ++ " and data width " ++ tshow d
+               )
+             Nothing
+             (Just False)
+             Nothing
+             Nothing
+             Nothing
+             Nothing
+             Nothing
+             Nothing
+             Nothing
+             Nothing
+             Nothing
+             Nothing
+         | (var, Locatable defn defnPos) <- Map.toList stateGlobalIdents
+         ]
+    return ()
   Nothing -> return ()
 
 -- InitializeCallbacks
@@ -121,21 +176,19 @@ onStartup ch funcs = do
 
 -- Handlers
 hoverHandler                                 :: TMChan ReactorInput -> Handler HoverRequest
-hoverHandler ch req                          = do
-  let ps = req ^. params
+hoverHandler ch                              =
   atomically
     . writeTMChan ch
     . ShowHover
-    $ req
 
-completionHandler                            :: Handler CompletionRequest
-completionHandler req                        = do
-  let ps = req ^. params
-  return ()
+completionHandler                            :: TMChan ReactorInput -> Handler CompletionRequest
+completionHandler ch                         =
+  atomically
+    . writeTMChan ch
+    . ShowCompletion
 
-completionResolveHandler                     :: Handler CompletionItemResolveRequest
-completionResolveHandler req                 = do
-  return ()
+completionResolveHandler                     :: Maybe (Handler CompletionItemResolveRequest)
+completionResolveHandler                     = Nothing
 
 signatureHelpHandler                         :: Maybe (Handler SignatureHelpRequest)
 signatureHelpHandler                         = Nothing
@@ -322,8 +375,8 @@ main = do
       }
     Handlers
       { hoverHandler                                 = Just . Main.hoverHandler $ ch
-      , completionHandler                            = Just Main.completionHandler
-      , completionResolveHandler                     = Just Main.completionResolveHandler
+      , completionHandler                            = Just . Main.completionHandler $ ch
+      , completionResolveHandler                     = Main.completionResolveHandler
       , signatureHelpHandler                         = Main.signatureHelpHandler
       , definitionHandler                            = Main.definitionHandler
       , typeDefinitionHandler                        = Main.typeDefinitionHandler

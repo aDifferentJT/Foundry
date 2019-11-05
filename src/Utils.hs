@@ -1,4 +1,4 @@
-{-# LANGUAGE LambdaCase, NoImplicitPrelude #-}
+{-# LANGUAGE FlexibleInstances, FunctionalDependencies, LambdaCase, MultiParamTypeClasses, NoImplicitPrelude, RankNTypes, TypeFamilies, UndecidableInstances #-}
 
 {-|
 Module      : Utils
@@ -15,6 +15,14 @@ module Utils
   , Endianness(Little, Big)
   , bitsToInt
   , intToBits
+  , encodeWord8
+  , encodeWord16
+  , encodeWord32
+  , encodeWord64
+  , decodeWord8
+  , decodeWord16
+  , decodeWord32
+  , decodeWord64
   , mapLeft
   , mapRight
   , mapHead
@@ -27,12 +35,15 @@ module Utils
   , joinTailsToHeads
   , whileM
   , untilM
+  , wrapError
   ) where
 
 import Control.Arrow ((***))
+import Control.Monad.Except (MonadError, catchError, throwError)
 import Data.Bits (shiftL, shiftR, (.&.), (.|.))
 import Data.List (foldl, sortBy, unfoldr)
 import qualified Data.Map as Map
+import Data.Word
 
 import qualified Text.ParserCombinators.ReadPrec as ReadPrec
 import Text.Read (readPrec)
@@ -75,6 +86,55 @@ intToBits Little = unfoldr f
         f 0 = Nothing
         f x = Just (toEnum (x .&. 1), shiftR x 1)
 intToBits Big    = reverse . intToBits Little
+
+infixr 0 .$.
+(.$.) :: (a -> b) -> (a, a) -> (b, b)
+(.$.) f = f *** f
+
+encodeWord8 :: Endianness -> Word8 -> ByteString
+encodeWord8 _ = pack . (:[])
+
+encodeWord16 :: Endianness -> Word16 -> ByteString
+encodeWord16 e x = case e of
+    Little -> ls ++ bs
+    Big    -> bs ++ ls
+  where ls = encodeWord8 e (fromIntegral x)
+        bs = encodeWord8 e (fromIntegral . shiftR x $ 8)
+
+encodeWord32 :: Endianness -> Word32 -> ByteString
+encodeWord32 e x = case e of
+    Little -> ls ++ bs
+    Big    -> bs ++ ls
+  where ls = encodeWord16 e (fromIntegral x)
+        bs = encodeWord16 e (fromIntegral . shiftR x $ 16)
+
+encodeWord64 :: Endianness -> Word64 -> ByteString
+encodeWord64 e x = case e of
+    Little -> ls ++ bs
+    Big    -> bs ++ ls
+  where ls = encodeWord32 e (fromIntegral x)
+        bs = encodeWord32 e (fromIntegral . shiftR x $ 32)
+
+decodeWord8 :: Endianness -> ByteString -> Word8
+decodeWord8 _ = fromMaybe 0 . headMay . unpack
+
+decodeWord16 :: Endianness -> ByteString -> Word16
+decodeWord16 e bs = case e of
+    Little -> x .|. shiftL y 8
+    Big    -> shiftL x 8 .|. y
+  where (x, y) = fromIntegral . decodeWord8 e .$. splitAt 1 bs
+
+decodeWord32 :: Endianness -> ByteString -> Word32
+decodeWord32 e bs = case e of
+    Little -> x .|. shiftL y 16
+    Big    -> shiftL x 16 .|. y
+  where (x, y) = fromIntegral . decodeWord16 e .$. splitAt 2 bs
+
+decodeWord64 :: Endianness -> ByteString -> Word64
+decodeWord64 e bs = case e of
+    Little -> x .|. shiftL y 32
+    Big    -> shiftL x 32 .|. y
+  where (x, y) = fromIntegral . decodeWord32 e .$. splitAt 4 bs
 
 -- | Map the left side of an Either
 mapLeft :: (a1 -> a2) -> Either a1 b -> Either a2 b
@@ -138,4 +198,13 @@ whileM n f m = m >>= \x -> if f x then whileM (n-1) f m else return . Just $ x
 untilM :: Monad m => Int -> (a -> Bool) -> m a -> m (Maybe a)
 untilM 0 _ _ = return Nothing
 untilM n f m = m >>= \x -> if f x then return . Just $ x else untilM (n-1) f m
+
+wrapError :: MonadError e m => m () -> m a -> m () -> m a
+wrapError pre act post = do
+  pre
+  res <- catchError (Left <$> act) (return . Right)
+  post
+  case res of
+    Left x  -> return x
+    Right e -> throwError e
 
