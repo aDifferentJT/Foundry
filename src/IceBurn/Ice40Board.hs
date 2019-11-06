@@ -30,7 +30,7 @@ module IceBurn.Ice40Board
 
 import ClassyPrelude
 
-import Utils (Endianness(..), encodeWord32, decodeWord32, wrapError)
+import Utils (Endianness(..), encodeWord32, decodeWord32, zipMaybe, wrapError)
 
 import Control.Monad.Except (ExceptT(..), runExceptT, throwError)
 import Control.Monad.Trans (lift)
@@ -132,7 +132,7 @@ usbWrite dev EndpointDesc{..} bs =
     (Isochronous _ _) -> throwError "Isochronous transfers not yet supported"
     Bulk              -> return writeBulk
     Interrupt         -> return writeInterrupt
-  >>= lift . (\f -> f dev endpointAddress bs 1000)
+  >>= lift . (\f -> f dev endpointAddress bs 10000)
   >>= \case
     (_, Completed) -> return ()
     (_, TimedOut)  -> throwError "Write timed out"
@@ -144,7 +144,7 @@ boardCmdI Ice40Board{..} bs size = do
   usbRead boardDevice boardCmdIn size
 
 boardCmd :: Ice40Board -> Word8 -> Word8 -> ByteString -> Size -> ExceptT Text IO ByteString
-boardCmd board cmd subCmd payload size = do
+boardCmd board cmd subCmd payload size =
   boardCmdI board (cons cmd . cons subCmd $ payload) size
 
 data GPIO = GPIO Ice40Board
@@ -183,12 +183,14 @@ spiSetMode (SPI board) =
 
 spiIoFunc :: SPI -> ByteString -> Size -> ExceptT Text IO ByteString
 spiIoFunc (SPI Ice40Board{..}) writeBytes readSize = do
+  let writeBytes' = unpack writeBytes ++ replicate (readSize - length writeBytes) 0
   boardCmd Ice40Board{..} 0x06 0x06 (pack [0x00, 0x00]) 16 -- SPI Start
-  boardCmd Ice40Board{..} 0x06 0x07 (pack [0x00, 0x00, 0x00, if readSize > 0 then 0x01 else 0x00, fromIntegral . length $ writeBytes]) 16 -- SPI IO Start
-  let writeChunks = map pack . chunksOf 64 . unpack $ writeBytes
-  mapM (usbWrite boardDevice boardDataOut) writeChunks
+  boardCmd Ice40Board{..} 0x06 0x07 (pack [0x00, 0x00, 0x00, if readSize > 0 then 0x01 else 0x00] ++ (encodeWord32 Little . fromIntegral . length $ writeBytes')) 16 -- SPI IO Start
+  let writeChunks = map pack . chunksOf 64 $ writeBytes'
   let readSizes = unfoldr (\case 0 -> Nothing; x -> let y = min 64 x in Just (y, x - y)) readSize
-  readBytes <- concat <$> mapM (usbRead boardDevice boardDataIn) readSizes
+  readBytes <- concat <$> mapM
+    (uncurry (>>) . (maybe (return ()) (usbWrite boardDevice boardDataOut) *** maybe (return "") (usbRead boardDevice boardDataIn)))
+    (zipMaybe writeChunks readSizes)
   boardCmd Ice40Board{..} 0x06 0x87 (pack [0x00]) 16
   boardCmd Ice40Board{..} 0x06 0x06 (pack [0x00, 0x01]) 16
   return readBytes
@@ -261,14 +263,12 @@ flashWaitDone flash = (flashStatBusy .&.) <$> flashGetStatus flash >>= \case
 
 flashGetStatus :: M25P10Flash -> ExceptT Text IO Word8
 flashGetStatus (M25P10Flash io) =
-  io (pack [flashCmdGetStatus]) 1
-  >>= (\x -> (lift . putStrLn . ("Status: " ++) . tshow . unpack $ x) >> return x)
+  io (pack [flashCmdGetStatus]) 2
   >>= maybe (throwError "Failed to get flash status") return . flip index 1
 
 flashGetId :: M25P10Flash -> ExceptT Text IO ByteString
 flashGetId (M25P10Flash io) =
   io (pack [flashCmdReadId]) 4
-  >>= (\x -> (lift . putStrLn . ("ID: " ++) . tshow . unpack $ x) >> return x)
   >>= maybe (throwError "Failed to get flash id") return . tailMay
 
 waitForBoard :: Ctx -> VendorId -> ProductId -> IO Device

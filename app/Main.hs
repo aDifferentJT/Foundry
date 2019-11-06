@@ -7,6 +7,7 @@ import ClassyPrelude hiding (getArgs)
 import Parser (parseFile)
 import CodeGen (genCode)
 import Assembler.GenAssembler (genAssembler)
+import CallSynth (callSynth)
 import IceBurn (burn)
 
 import Control.Monad (when)
@@ -26,15 +27,18 @@ main = runExceptT
   ( do
     Options{..} <- getOpts
     ast <- parseFile fn
-    lift . writeFileUtf8 (fn -<.> ".v") . genCode $ ast
+    let verilog = genCode ast
+    when shouldGenVerilog . lift . writeFileUtf8 (fn -<.> ".v") $ verilog
     when shouldGenAssembler . lift . genAssembler (dropExtensions . replaceBaseName fn $ (takeBaseName fn ++ "_assembler")) $ ast
-    void burn
+    when shouldBurn $ (lift . callSynth $ verilog) >>= burn
     ) >>= \case
     Left err -> putStrLn err
     Right () -> return ()
 
 data Options = Options
   { fn :: FilePath
+  , shouldGenVerilog :: Bool
+  , shouldBurn :: Bool
   , shouldGenAssembler :: Bool
   , showHelp :: Bool
   }
@@ -42,12 +46,16 @@ data Options = Options
 defaultOptions :: Options
 defaultOptions = Options
   ""
-  True
+  False
+  False
+  False
   False
 
 options :: [OptDescr (Options -> Options)]
 options =
-  [ Option [] ["noAssembler"] (NoArg $ \o -> o { shouldGenAssembler = False }) "Do not generate an assembler"
+  [ Option ['v'] ["verilog"] (NoArg $ \o -> o { shouldGenVerilog = True }) "Generate the verilog"
+  , Option ['b'] ["burn"] (NoArg $ \o -> o { shouldBurn = True }) "Burn to the board"
+  , Option ['a'] ["assembler"] (NoArg $ \o -> o { shouldGenAssembler = True }) "Generate an assembler"
   , Option ['h'] ["help"] (NoArg $ \o -> o { showHelp = True }) "Print this help message"
   ]
 

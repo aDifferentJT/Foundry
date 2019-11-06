@@ -1,0 +1,31 @@
+
+set_io OUT_R[0] 72
+set_io OUT_R[1] 69
+set_io OUT_R[2] 66
+
+set_io OUT_C[0] 87
+set_io OUT_C[1] 85
+set_io OUT_C[2] 82
+set_io OUT_C[3] 80
+set_io OUT_C[4] 78
+set_io OUT_C[5] 73
+set_io OUT_C[6] 71
+set_io OUT_C[7] 68
+
+set_io IND[0] 86
+set_io IND[1] 83
+set_io IND[2] 81
+set_io IND[3] 79
+
+set_io IN_R[0] 100
+set_io IN_R[1] 15
+set_io IN_R[2] 16
+set_io IN_R[3] 19
+
+set_io IN_C[0] 90
+set_io IN_C[1] 93
+set_io IN_C[2] 95
+set_io IN_C[3] 97
+
+set_io CLK 13
+

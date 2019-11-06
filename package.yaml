@@ -79,6 +79,8 @@ data-files:
   - assembler/plugin.h
   - assembler/utils.c
   - assembler/utils.h
+  - verilog/pinDef.pcf
+  - verilog/wrapper.v
 
 tests:
   Parser-test:

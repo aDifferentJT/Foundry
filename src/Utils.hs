@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, FunctionalDependencies, LambdaCase, MultiParamTypeClasses, NoImplicitPrelude, RankNTypes, TypeFamilies, UndecidableInstances #-}
+{-# LANGUAGE FlexibleInstances, FunctionalDependencies, LambdaCase, MultiParamTypeClasses, NoImplicitPrelude, RankNTypes, TupleSections, TypeFamilies, UndecidableInstances #-}
 
 {-|
 Module      : Utils
@@ -33,9 +33,11 @@ module Utils
   , intersectionWithKey3
   , (****)
   , joinTailsToHeads
+  , zipMaybe
   , whileM
   , untilM
   , wrapError
+  , readProcess
   ) where
 
 import Control.Arrow ((***))
@@ -44,6 +46,7 @@ import Data.Bits (shiftL, shiftR, (.&.), (.|.))
 import Data.List (foldl, sortBy, unfoldr)
 import qualified Data.Map as Map
 import Data.Word
+import System.Process (CreateProcess(..), StdStream(..), proc, waitForProcess, withCreateProcess)
 
 import qualified Text.ParserCombinators.ReadPrec as ReadPrec
 import Text.Read (readPrec)
@@ -191,6 +194,11 @@ joinTailsToHeads :: Monoid m => m -> [[m]] -> [m]
 joinTailsToHeads _ [x]        = x
 joinTailsToHeads y (x1:x2:xs) = mapLast ((++ (fromMaybe mempty . headMay $ x2)) . (++ y)) x1 ++ joinTailsToHeads y ((fromMaybe mempty . tailMay $ x2) : xs)
 
+zipMaybe :: [a] -> [b] -> [(Maybe a, Maybe b)]
+zipMaybe  []     ys    = map ((Nothing,) . Just) ys
+zipMaybe  xs     []    = map ((,Nothing) . Just) xs
+zipMaybe (x:xs) (y:ys) = (Just x, Just y) : zipMaybe xs ys
+
 whileM :: Monad m => Int -> (a -> Bool) -> m a -> m (Maybe a)
 whileM 0 _ _ = return Nothing
 whileM n f m = m >>= \x -> if f x then whileM (n-1) f m else return . Just $ x
@@ -207,4 +215,23 @@ wrapError pre act post = do
   case res of
     Left x  -> return x
     Right e -> throwError e
+
+readProcess :: FilePath -> [String] -> ByteString -> IO ByteString
+readProcess fn args input = do
+    let cp_opts = (proc fn args) {
+                    std_in  = CreatePipe,
+                    std_out = CreatePipe
+                  }
+    withCreateProcess cp_opts $
+      \mb_inH mb_outH _ ph ->
+        case (mb_inH, mb_outH) of
+          (Just inH, Just outH) -> do
+            hPut inH input
+            hClose inH
+            output <- hGetContents outH
+            void . waitForProcess $ ph
+            return output
+          (Nothing,_) -> error "readCreateProcess: Failed to get a stdin handle."
+          (_,Nothing) -> error "readCreateProcess: Failed to get a stdout handle."
+
 
