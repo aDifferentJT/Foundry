@@ -168,21 +168,17 @@ genPlugin Proc{..} = cStmts
 writePlugin :: Handle -> Proc -> IO ()
 writePlugin h = hPutStrLn h . pretty . genPlugin
 
-compilePlugin :: FilePath -> FilePath -> IO ()
-compilePlugin pluginFn binFn = do
-  includeDirs <- mapM (fmap takeDirectory . getDataFileName)
-    [ "assembler/assembler.h"
-    , "assembler/plugin.h"
-    , "assembler/utils.h"
-    ]
+compile :: FilePath -> FilePath -> IO ()
+compile pluginFn binFn = do
+  includeDir <- getDataFileName "assembler/"
   assemblerC <- getDataFileName "assembler/assembler.c"
   utilsC <- getDataFileName "assembler/utils.c"
   cc <- fromMaybe "cc" <$> lookupEnv "CC"
-  callProcess cc (concatMap (("-I":) . (:[])) includeDirs ++ ["-o", binFn, assemblerC, utilsC, pluginFn])
+  callProcess cc ["-I" ++ includeDir, "-o", binFn, assemblerC, utilsC, pluginFn]
 
 genAssembler :: FilePath -> Proc -> IO ()
 genAssembler fn ast = withSystemTempFile (takeBaseName fn -<.> ".c") $ \tmpFn tmpH -> do
   writePlugin tmpH ast
   hFlush tmpH
-  compilePlugin tmpFn fn
+  compile tmpFn fn
 

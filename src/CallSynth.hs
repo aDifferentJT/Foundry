@@ -18,41 +18,76 @@ import Utils (readProcess)
 
 import Paths_Foundry
 
+import Control.Concurrent (forkIO)
 import Data.Text.IO (hPutStrLn)
 import System.FilePath ((-<.>), takeBaseName)
-import System.IO (Handle)
-import System.Process (callProcess)
+import System.IO (Handle, openFile)
+import System.Process
+  ( ProcessHandle
+  , StdStream(UseHandle)
+  , createPipe
+  , createProcess
+  , proc
+  , std_in
+  , std_out
+  , std_err
+  , waitForProcess
+  )
 
 writeVerilog :: Handle -> Text -> IO ()
 writeVerilog h verilog = hPutStrLn h verilog >> getDataFileName "verilog/wrapper.v" >>= readFile >>= hPut h
 
 makeBlif :: FilePath -> FilePath -> IO ()
 makeBlif blifFn verilogFn = do
-  putStrLn "Making blif..."
-  callProcess "yosys" ["-p", "synth_ice40 -top top -blif " ++ blifFn, verilogFn]
-  putStrLn "blif made"
+  includeDir <- getDataFileName "verilog/"
+  void . withFile "/dev/null" WriteMode $ \nullH -> do
+    (_, _, _, ph) <- createProcess $
+      ( proc "yosys"
+        [ "-p"
+        , "read_verilog -I" ++ includeDir ++ " " ++ verilogFn ++ " ; synth_ice40 -top top -blif " ++ blifFn
+        ]
+      )
+      { std_out = UseHandle nullH
+      }
+    waitForProcess ph
 
-makeAsc :: ByteString -> IO ByteString
-makeAsc blif = do
-  putStrLn "Making asc..."
+makeAsc :: Handle -> Handle -> IO ProcessHandle
+makeAsc blifH ascH = do
   pinDefFn <- getDataFileName "verilog/pinDef.pcf"
-  asc <- readProcess "arachne-pnr" ["-d", "1k", "-p", pinDefFn, "-P", "vq100"] blif
-  putStrLn "asc made"
-  return asc
+  nullH <- openFile "/dev/null" WriteMode
+  (_, _, _, ph) <- createProcess $
+    ( proc "arachne-pnr" ["-d", "1k", "-p", pinDefFn, "-P", "vq100"]
+    )
+    { std_in  = UseHandle blifH
+    , std_out = UseHandle ascH
+    , std_err = UseHandle nullH
+    }
+  forkIO $ waitForProcess ph >> hClose nullH
+  return ph
 
-makeBin :: ByteString -> IO ByteString
-makeBin asc = do
-  putStrLn "Making bin..."
-  bin <- readProcess "icepack" [] asc
-  putStrLn "bin made"
-  return bin
+makeBin :: Handle -> Handle -> IO ProcessHandle
+makeBin ascH binH = do
+  (_, _, _, ph) <- createProcess $
+    ( proc "icepack" []
+    )
+    { std_in  = UseHandle ascH
+    , std_out = UseHandle binH
+    }
+  return ph
 
 callSynth :: Text -> IO ByteString
 callSynth verilog =
-  withSystemTempFile ("foundry.v") $ \verilogFn verilogH ->
-    withSystemTempFile ("foundry.blif") $ \blifFn blifH -> do
+  withSystemTempFile "foundry.v" $ \verilogFn verilogH ->
+    withSystemTempFile "foundry.blif" $ \blifFn blifH -> do
       writeVerilog verilogH verilog
       hFlush verilogH
       makeBlif blifFn verilogFn
-      hGetContents blifH >>= makeAsc >>= makeBin
+      (ascIn, ascOut) <- createPipe
+      (binIn, binOut) <- createPipe
+      ascP <- makeAsc blifH ascOut
+      binP <- makeBin ascIn binOut
+      bin <- hGetContents binIn
+      waitForProcess ascP
+      waitForProcess binP
+      return bin
 

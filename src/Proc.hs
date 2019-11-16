@@ -50,9 +50,6 @@ data BitsExpr
   = ConstBitsExpr [Bit]                  -- ^ A constant array of bits
   | EncBitsExpr Int Text                 -- ^ The encoding of a variable with given width and identifier
   | ConcatBitsExpr Int BitsExpr BitsExpr -- ^ Two expressions of bits concatenated with the width
-  | AndBitsExpr Int BitsExpr BitsExpr    -- ^ Two expressions of bits combined with a bitwise and operation with the width
-  | OrBitsExpr Int BitsExpr BitsExpr     -- ^ Two expressions of bits combined with a bitwise or operation with the width
-  | XorBitsExpr Int BitsExpr BitsExpr    -- ^ Two expressions of bits combined with a bitwise exclusive or operation with the width
   deriving Show
 
 -- | Calculate the width of an expression of bits
@@ -60,9 +57,6 @@ sizeOfEnc :: BitsExpr -> Int
 sizeOfEnc (ConstBitsExpr  bs)    = length bs
 sizeOfEnc (EncBitsExpr    n _)   = n
 sizeOfEnc (ConcatBitsExpr n _ _) = n
-sizeOfEnc (AndBitsExpr    n _ _) = n
-sizeOfEnc (OrBitsExpr     n _ _) = n
-sizeOfEnc (XorBitsExpr    n _ _) = n
 
 -- | Return the range of bits representing a given variable in the expression 
 findVarInEnc :: Text             -- ^ The identifier of the variable
@@ -77,9 +71,6 @@ findVarInEnc var off (ConcatBitsExpr _ e1 e2) =
   case findVarInEnc var off e1 of
     Just res -> Just res
     Nothing  -> findVarInEnc var (off + sizeOfEnc e1) e2
-findVarInEnc _   _   AndBitsExpr{} = Nothing
-findVarInEnc _   _   OrBitsExpr{}  = Nothing
-findVarInEnc _   _   XorBitsExpr{} = Nothing
 
 -- | A binary operation
 data Op          
@@ -103,13 +94,13 @@ data BoolExpr
 
 -- | An expression
 data Expr
-  = VarExpr (Maybe Int) Text            -- ^ An expression representing a variable
-  | RegExpr (Maybe Int) Text            -- ^ An expression representing the value in a register
-  | MemAccessExpr (Maybe Int) Text Expr -- ^ An access into memory
-  | ConstExpr Int                       -- ^ A constant
-  | BinaryConstExpr [Bit]               -- ^ A binary constant (some bits)
-  | OpExpr (Maybe Int) Op Expr Expr                 -- ^ A binary operation
-  | TernaryExpr (Maybe Int) BoolExpr Expr Expr      -- ^ A C-style ternary expression
+  = VarExpr (Maybe Int) Text                   -- ^ An expression representing a variable
+  | RegExpr (Maybe Int) Text                   -- ^ An expression representing the value in a register
+  | MemAccessExpr (Maybe Int) Text Expr        -- ^ An access into memory
+  | ConstExpr Int                              -- ^ A constant
+  | BinaryConstExpr [Bit]                      -- ^ A binary constant (some bits)
+  | OpExpr (Maybe Int) Op Expr Expr            -- ^ A binary operation
+  | TernaryExpr (Maybe Int) BoolExpr Expr Expr -- ^ A C-style ternary expression
   deriving Show
 
 widthOfExpr :: Expr -> Maybe Int 

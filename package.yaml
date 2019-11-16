@@ -30,6 +30,7 @@ library:
     - array
     - classy-prelude
     - containers
+    - directory
     - filepath
     - lens
     - mono-traversable
@@ -79,7 +80,14 @@ data-files:
   - assembler/plugin.h
   - assembler/utils.c
   - assembler/utils.h
+  - simulator/elm.json
+  - simulator/src/Interface.elm
+  - simulator/src/IntWidths.elm
+  - simulator/src/Style.elm
   - verilog/pinDef.pcf
+  - verilog/prescaler.v
+  - verilog/ram.v
+  - verilog/single_trigger.v
   - verilog/wrapper.v
 
 tests:

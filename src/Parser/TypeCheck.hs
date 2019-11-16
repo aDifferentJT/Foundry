@@ -25,15 +25,6 @@ typeCheck RawProc{..} = do
         _                 -> Nothing
         ) _rawImpls
   let instName n vs = unwords (n : ["<" ++ v ++ ">" | v <- vs])
-  {-
-  insts <- case zip3By (\(InstType n _) -> n) fst3 fst3 _rawInsts instImpls instEncs of
-    (_, (InstType n _, _):_, _, _, _, _, _) -> throwGlobalError $ "Instruction " ++ n ++ " has no encoding"
-    (_, _, _, ((n, vs, _), _):_, _, _, _)   -> throwGlobalError $ "Implementation and encoding given for unknown instruction " ++ instName n vs
-    (_, _, _, _, InstType n _:_, _, _)      -> throwGlobalError $ "Instruction " ++ n ++ " has no encoding or implementation"
-    (_, _, _, _, _, (n, vs, _):_, _)        -> throwGlobalError $ "Implementation given for unknown instruction " ++ instName n vs
-    (_, _, _, _, _, _, (n, vs, _):_)        -> throwGlobalError $ "Encoding given for unknown instruction " ++ instName n vs
-    (xs, [], [], [], [], [], [])            -> return [Inst n ts (vs1, rs) (vs2, e) | (InstType n ts, (_, vs1, rs), (_, vs2, e)) <- xs]
-    -}
   let insts = Map.elems $ intersectionWithKey3 Inst _rawInsts instImpls instEncs
   let buttonImpls = Map.mapMaybe (\case ButtonImpl rs -> Just rs; _ -> Nothing) _rawImpls
   let buttons = Map.elems $ Map.intersectionWithKey Button _rawButtons buttonImpls

@@ -486,9 +486,6 @@ unmaybeBitsExpr :: MaybeBitsExpr -> ParserMonad BitsExpr
 unmaybeBitsExpr (MaybeConstBitsExpr bs)              = return $ ConstBitsExpr bs
 unmaybeBitsExpr (MaybeEncBitsExpr    n v)     = return $ EncBitsExpr (fromMaybe 0 n) v
 unmaybeBitsExpr (MaybeConcatBitsExpr n e1 e2) = ConcatBitsExpr (fromMaybe 0 n) <$> unmaybeBitsExpr e1 <*> unmaybeBitsExpr e2
-unmaybeBitsExpr (MaybeAndBitsExpr    n e1 e2) = AndBitsExpr (fromMaybe 0 n) <$> unmaybeBitsExpr e1 <*> unmaybeBitsExpr e2
-unmaybeBitsExpr (MaybeOrBitsExpr     n e1 e2) = OrBitsExpr (fromMaybe 0 n) <$> unmaybeBitsExpr e1 <*> unmaybeBitsExpr e2
-unmaybeBitsExpr (MaybeXorBitsExpr    n e1 e2) = XorBitsExpr (fromMaybe 0 n) <$> unmaybeBitsExpr e1 <*> unmaybeBitsExpr e2
 
 -- | Get the constant prefix of the given expression
 encPrefix :: BitsExpr -> ParserMonad ([Bit], BitsExpr)
@@ -497,9 +494,6 @@ encPrefix (EncBitsExpr n v)        = return ([], EncBitsExpr n v)
 encPrefix (ConcatBitsExpr _ e1 e2) = encPrefix e1 >>= \case
   (bs, ConstBitsExpr []) -> first (bs ++) <$> encPrefix e2
   (bs1, e1')             -> return (bs1, ConcatBitsExpr (sizeOfEnc e1' + sizeOfEnc e2) e1' e2)
-encPrefix (AndBitsExpr n e1 e2)    = return ([], AndBitsExpr n e1 e2)
-encPrefix (OrBitsExpr  n e1 e2)    = return ([], OrBitsExpr  n e1 e2)
-encPrefix (XorBitsExpr n e1 e2)    = return ([], XorBitsExpr n e1 e2)
 
 makeOpExpr :: Op -> Locatable Expr -> Locatable Expr -> ParserMonad (Locatable Expr)
 makeOpExpr ConcatBits e1 e2 =
@@ -541,7 +535,7 @@ printErrors s = mapLeft (intercalate "\n" . map (printError s))
               let (line1, line2) =  (reverse . takeWhile (/= '\n') . reverse *** takeWhile (/= '\n')) . splitAt a1 $ s in
               prettyPosn (Just (AlexPosn a1 l1 c1, AlexPosn a2 l2 c2)) ++ ": " ++ e ++ "\n" ++ line1 ++ line2 ++ "\n" ++ replicate (c1 - 1) ' ' ++ replicate (c2 - c1) '^' ++ "\n"
           | otherwise =
-              prettyPosn (Just (AlexPosn a1 l1 c1, AlexPosn a2 l2 c2)) ++ ": " ++ e ++ "\nError spanning mulitple lines, I don't yet know how to display that!!!"
+              prettyPosn (Just (AlexPosn a1 l1 c1, AlexPosn a2 l2 c2)) ++ ": " ++ e ++ "\nError spanning mulitple lines, I don't yet know how to display that!!!\n"
 
 -- | Run the given parser on the given input string and either return a nicely formatted error or the output of the parser
 runParser :: ParserMonad a -> Text -> Either Text a

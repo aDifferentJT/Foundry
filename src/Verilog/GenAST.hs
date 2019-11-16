@@ -27,7 +27,7 @@ combineBlocks :: [a -> V.Verilog] -> a -> V.Verilog
 combineBlocks fs = V.Seq . flip fmap fs . flip ($)
 
 genBits :: [Bit] -> Text
-genBits bs = (tshow . length $ bs) ++ "'b" ++ concatMap tshow bs
+genBits bs = (tshow . length $ bs) ++ "'b" ++ (concatMap tshow . reverse $ bs)
 
 genInstDef :: Inst -> V.Verilog
 genInstDef (Inst n _ _ (_, (bs, _))) = V.Define ("is_inst_" ++ n) ["inst"]

@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, FunctionalDependencies, LambdaCase, MultiParamTypeClasses, NoImplicitPrelude, RankNTypes, TupleSections, TypeFamilies, UndecidableInstances #-}
+{-# LANGUAGE FlexibleInstances, FunctionalDependencies, LambdaCase, MultiParamTypeClasses, NoImplicitPrelude, OverloadedStrings, RankNTypes, TupleSections, TypeFamilies, UndecidableInstances #-}
 
 {-|
 Module      : Utils
@@ -26,8 +26,11 @@ module Utils
   , mapLeft
   , mapRight
   , mapHead
+  , mapTail
+  , mapHeadTail
   , mapLast
   , mapInitLast
+  , isPlural
   , groupWith
   , selectLargestBy
   , intersectionWithKey3
@@ -38,13 +41,17 @@ module Utils
   , untilM
   , wrapError
   , readProcess
+  , flap
+  , textHeadToUpper
   ) where
 
 import Control.Arrow ((***))
 import Control.Monad.Except (MonadError, catchError, throwError)
 import Data.Bits (shiftL, shiftR, (.&.), (.|.))
+import qualified Data.Char as Char
 import Data.List (foldl, sortBy, unfoldr)
 import qualified Data.Map as Map
+import qualified Data.Text as Text
 import Data.Word
 import System.Process (CreateProcess(..), StdStream(..), proc, waitForProcess, withCreateProcess)
 
@@ -152,6 +159,16 @@ mapHead :: (a -> a) -> [a] -> [a]
 mapHead _  []    = []
 mapHead f (x:xs) = f x : xs
 
+-- | Map only the tail of the list
+mapTail :: ([a] -> [a]) -> [a] -> [a]
+mapTail _  []    = []
+mapTail f (x:xs) = x : f xs
+
+-- | Map seperately the head and tail of the list
+mapHeadTail :: (a -> b) -> (a -> b) -> [a] -> [b]
+mapHeadTail _ _  []    = []
+mapHeadTail f g (x:xs) = f x : map g xs
+
 -- | Map only the last element of the list
 mapLast :: (a -> a) -> [a] -> [a]
 mapLast _  []    = []
@@ -163,6 +180,12 @@ mapInitLast :: (a -> b) -> (a -> b) -> [a] -> [b]
 mapInitLast _ _ []     = []
 mapInitLast _ g [x]    = [g x]
 mapInitLast f g (x:xs) = f x : mapInitLast f g xs
+
+-- | Check if a list is plural (more than 1 element)
+isPlural :: [a] -> Bool
+isPlural []      = False
+isPlural [_]     = False
+isPlural (_:_:_) = True
 
 -- | Group the elements by their image under the function
 groupWith :: Ord b => (a -> b) -> [a] -> [(b, [a])]
@@ -234,4 +257,9 @@ readProcess fn args input = do
           (Nothing,_) -> error "readCreateProcess: Failed to get a stdin handle."
           (_,Nothing) -> error "readCreateProcess: Failed to get a stdout handle."
 
+flap :: Functor f => f (a -> b) -> a -> f b
+flap fs x = fmap ($ x) fs
+
+textHeadToUpper :: Text -> Text
+textHeadToUpper = maybe "" (uncurry Text.cons . first Char.toUpper) . Text.uncons
 

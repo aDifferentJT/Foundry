@@ -133,27 +133,6 @@ BitsExpr          : '(' BitsExpr ')'                                      { $2 }
                   | BitsExpr '++' BitsExpr                                {
   MaybeConcatBitsExpr (liftM2 (+) (sizeOfMaybeEnc . locatableValue $ $1) (sizeOfMaybeEnc . locatableValue $ $3)) `fmap` $1 <*> $3
 }
-                  | BitsExpr '&' BitsExpr                                 {%
-  do
-    let n1 = sizeOfMaybeEnc . locatableValue $ $1
-    let n2 = sizeOfMaybeEnc . locatableValue $ $3
-    unless (n1 == n2) . throwLocalError () (liftA2 (,) $1 $3) $ "Mismatched dimensions of bitwise and: Bits " ++ tshow n1 ++ " and Bits " ++ tshow n2
-    return $ MaybeAndBitsExpr n1 `fmap` $1 <*> $3
-}
-                  | BitsExpr '|' BitsExpr                                 {%
-  do
-    let n1 = sizeOfMaybeEnc . locatableValue $ $1
-    let n2 = sizeOfMaybeEnc . locatableValue $ $3
-    unless (n1 == n2) . throwLocalError () (liftA2 (,) $1 $3) $ "Mismatched dimensions of bitwise or: Bits " ++ tshow n1 ++ " and Bits " ++ tshow n2
-    return $ MaybeOrBitsExpr n1 `fmap` $1 <*> $3
-}
-                  | BitsExpr '^' BitsExpr                                 {%
-  do
-    let n1 = sizeOfMaybeEnc . locatableValue $ $1
-    let n2 = sizeOfMaybeEnc . locatableValue $ $3
-    unless (n1 == n2) . throwLocalError () (liftA2 (,) $1 $3) $ "Mismatched dimensions of bitwise exclusive or: Bits " ++ tshow n1 ++ " and Bits " ++ tshow n2
-    return $ MaybeXorBitsExpr n1 `fmap` $1 <*> $3
-}
 
 ArgTypeList       :: { Locatable [Type] }
 ArgTypeList       : {- empty -}                                           { pure [] }
