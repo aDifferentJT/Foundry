@@ -180,7 +180,13 @@ genShowInst Proc{..} = ElmStmts
     $ [ ( ElmPatFuncAppl (textHeadToUpper i) (zipWith (\n _ -> ElmPatIdent . ("arg" ++) . tshow $ n) [1..] as)
         , foldl
             (\e (n, a) ->
-              ElmBinOp e "++" (showArg a . ElmExprIdent . ("arg" ++) . tshow $ n)
+              ElmBinOp e "++"
+              . ElmBinOp (ElmStringExpr " ") "++"
+              . showArg a
+              . ElmExprIdent
+              . ("arg" ++)
+              . tshow
+              $ n
             )
             (ElmStringExpr i)
           . zip [1..]
@@ -310,7 +316,7 @@ genEncodeInst Proc{..} = ElmStmts
       ]
   ]
   where encode :: [Type] -> [Text] -> BitsExpr -> ElmExpr
-        encode _  _  (ConstBitsExpr bs) = ElmFuncAppl (ElmExprIdent . ("int" ++) . tshow . length $ bs) [ElmExprInt . bitsToInt Little $ bs]
+        encode _  _  (ConstBitsExpr bs) = ElmFuncAppl (ElmExprIdent . ("int" ++) . tshow . length $ bs) [ElmExprInt . bitsToInt Big $ bs]
         encode ts as (EncBitsExpr _ i) =
           case headMay . mapMaybe (\(n, (t, a)) -> if a == i then Just (n, t) else Nothing) . zip [1..] $ zip ts as of
             Just (n, RegT _)  -> error "Reg argument not supported"
@@ -375,7 +381,17 @@ genGetInspectibleMems Proc{..} = ElmStmts
               [ElmTypeFuncAppl "InspectibleMem" ["SimState"]]
           )
         )
-  , ElmDef (ElmPatFuncAppl "getInspectibleMems" ["simState"])
+  , let
+      instMemIndex =
+        headMay
+        . mapMaybe (\case
+            ImplRule (RegLValue "inst") (MemAccessExpr _ mem index) ->
+              Just (mem, index)
+            _ -> Nothing
+          )
+        $ always
+    in
+    ElmDef (ElmPatFuncAppl "getInspectibleMems" ["simState"])
     . ElmListExpr
     $ [ ElmRecord
         [ ( "title"
@@ -390,7 +406,9 @@ genGetInspectibleMems Proc{..} = ElmStmts
                     ( ElmBinOp
                       ( ElmFuncAppl (ElmMember (ElmMember "Maybe" "Extra") "unwrap")
                         [ ElmStringExpr ""
-                        , ElmBinOp (ElmMember "String" "fromInt") "<<" "toInt"
+                        , if (fst <$> instMemIndex) == Just i
+                          then ElmBinOp "showInst" "<<" "decodeInst"
+                          else ElmBinOp (ElmMember "String" "fromInt") "<<" "toInt"
                         ]
                       )
                       "<<"
@@ -407,7 +425,12 @@ genGetInspectibleMems Proc{..} = ElmStmts
                         $ [ ( i
                             , ElmFuncAppl (ElmMember "Array" "set")
                               [ "n"
-                              , ElmFuncAppl (ElmExprIdent $ "int" ++ tshow dw) ["x"]
+                              , ElmFuncAppl
+                                ( if (fst <$> instMemIndex) == Just i
+                                  then "encodeInst"
+                                  else ElmExprIdent $ "int" ++ tshow dw
+                                )
+                                ["x"]
                               , ElmMember "simState" i
                               ]
                             )
@@ -415,10 +438,24 @@ genGetInspectibleMems Proc{..} = ElmStmts
                       ]
                     )
                     "<<"
-                    "String.toInt"
+                    ( if (fst <$> instMemIndex) == Just i
+                      then "readInst"
+                      else ElmMember "String" "toInt"
+                    )
                   )
                 , ( "selected"
-                  , "False"
+                  , maybe "False"
+                    ( ElmBinOp
+                        ( ElmFuncAppl
+                          (ElmExprIdent $ "int" ++ tshow aw)
+                          ["n"]
+                        )
+                        "=="
+                      . elmExpr Proc{..} aw
+                    )
+                    ( instMemIndex
+                      >>= \(instMem, instIndex) -> if instMem == i then Just instIndex else Nothing
+                    )
                   )
                 ]
             , ElmFuncAppl (ElmMember "List" "range")

@@ -1,3 +1,4 @@
 processor_*.v
+processor_*.html
 processor_*_assembler
 *.log
