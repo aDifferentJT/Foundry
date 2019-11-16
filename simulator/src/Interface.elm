@@ -14,28 +14,46 @@ import Element.Border
 import Element.Events
 import Element.Font
 import Element.Input
+import File exposing (File)
+import File.Download
+import File.Select
 import Html exposing (Html)
 import Html.Attributes
 import Html.Events
 import Json.Decode as Decode
-import List exposing (repeat)
+import List
 import List.Extra
 import Maybe exposing (withDefault)
 import Maybe.Extra
-import String exposing (fromFloat)
+import String
 import Style
 import Task
 import Time
 
 
+padToLen : Int -> a -> List a -> List a
+padToLen n p xs =
+    if n == 0 then
+        []
+
+    else
+        case xs of
+            [] ->
+                List.repeat n p
+
+            y :: ys ->
+                y :: padToLen (n - 1) p ys
+
+
 type alias InspectibleMem simState =
-    { title : String
+    { name : String
     , contents :
         List
             { value : String
             , set : String -> Maybe simState
             , selected : Bool
             }
+    , setAll : List String -> simState
     }
 
 
@@ -80,6 +98,10 @@ type Msg simState
     | StartEditingMem Int Int String
     | StopEditingMem Int Int
     | DidResize Int Int
+    | DownloadMem (InspectibleMem simState)
+    | OfferUploadMem (InspectibleMem simState)
+    | PerformUploadMem (InspectibleMem simState) File
+    | CompleteUploadMem (InspectibleMem simState) String
 
 
 type alias Interface simState =
@@ -207,6 +229,44 @@ update sim msg model =
             , Cmd.none
             )
 
+        DownloadMem mem ->
+            ( model
+            , File.Download.string
+                (mem.name ++ ".txt")
+                "text/plain"
+                (String.join "\n"
+                    << List.map .value
+                 <|
+                    mem.contents
+                )
+            )
+
+        OfferUploadMem mem ->
+            ( model
+            , File.Select.file [ "text/plain" ] (PerformUploadMem mem)
+            )
+
+        PerformUploadMem mem file ->
+            ( model
+            , Task.perform (CompleteUploadMem mem)
+                << File.toString
+              <|
+                file
+            )
+
+        CompleteUploadMem mem string ->
+            ( { model
+                | simState =
+                    mem.setAll
+                        << padToLen (List.length mem.contents) ""
+                        << String.split "\n"
+                    <|
+                        string
+                , editingMems = Dict.empty
+              }
+            , Cmd.none
+            )
+
 
 subscriptions : Sim simState -> Model simState -> Sub (Msg simState)
 subscriptions sim model =
@@ -287,24 +347,6 @@ ledTable sim model =
         model.simState
 
 
-
-{-
-   onTouchStart : Msg simState -> Html.Attribute (Msg simState)
-   onTouchStart msg =
-       Html.Events.on "touchstart" (Decode.succeed msg)
-
-
-   onTouchEnd : Msg simState -> Html.Attribute (Msg simState)
-   onTouchEnd msg =
-       Html.Events.on "touchend" (Decode.succeed msg)
-
-
-   onTouchLeave : Msg simState -> Html.Attribute (Msg simState)
-   onTouchLeave msg =
-       Html.Events.on "touchleave" (Decode.succeed msg)
--}
-
-
 makeButton : Sim simState -> Model simState -> Int -> Element (Msg simState)
 makeButton sim model n =
     let
@@ -381,8 +423,26 @@ memTable sim model =
                         [ Element.width Element.fill
                         , Element.height Element.fill
                         , Element.scrollbarY
+                        , Element.spacing 10
                         ]
-                        [ Element.el Style.heading << Element.text <| mem.title
+                        [ Element.el Style.heading << Element.text <| "Contents of " ++ mem.name
+                        , Element.row
+                            [ Element.width Element.fill
+                            , Element.paddingXY 20 0
+                            ]
+                            [ Element.Input.button
+                                [ Element.alignLeft
+                                ]
+                                { onPress = Just (DownloadMem mem)
+                                , label = Element.text "Download"
+                                }
+                            , Element.Input.button
+                                [ Element.alignRight
+                                ]
+                                { onPress = Just (OfferUploadMem mem)
+                                , label = Element.text "Upload"
+                                }
+                            ]
                         , Element.indexedTable
                             [ Element.spacing 10
                             , Element.padding 10
@@ -453,7 +513,7 @@ memTable sim model =
                                                     <|
                                                         model.editingMems
                                                 , placeholder = Nothing
-                                                , label = Element.Input.labelHidden <| mem.title ++ " " ++ String.fromInt n
+                                                , label = Element.Input.labelHidden <| mem.name ++ " " ++ String.fromInt n
                                                 }
                                   }
                                 ]
@@ -506,7 +566,7 @@ view sim model =
                     )
                 ]
                 { onChange = ChangeClockSpeed
-                , label = Element.Input.labelLeft [] << Element.text <| "Clock speed: " ++ fromFloat model.clockSpeed
+                , label = Element.Input.labelLeft [] << Element.text <| "Clock speed: " ++ String.fromFloat model.clockSpeed
                 , min = 100
                 , max = 999
                 , value = model.clockSpeed

@@ -394,8 +394,8 @@ genGetInspectibleMems Proc{..} = ElmStmts
     ElmDef (ElmPatFuncAppl "getInspectibleMems" ["simState"])
     . ElmListExpr
     $ [ ElmRecord
-        [ ( "title"
-          , ElmStringExpr $ "Contents of " ++ i
+        [ ( "name"
+          , ElmStringExpr i
           )
         , ( "contents"
           , ElmFuncAppl (ElmMember "List" "map")
@@ -463,6 +463,55 @@ genGetInspectibleMems Proc{..} = ElmStmts
                 , ElmBinOp (ElmBinOp 2 "^" (ElmExprInt aw)) "-" 1
                 ]
             ]
+          )
+        , ( "setAll"
+          , ElmLambda ["xs"]
+            . ElmRecordUpdate "simState"
+            $ [ ( i
+                , ElmBinOp
+                  ( ElmBinOp
+                    ( ElmFuncAppl
+                      (ElmMember "Array" "indexedMap")
+                      [ ElmLambda ["n"]
+                        ( ElmBinOp
+                          ( ElmFuncAppl
+                            ( ElmMember
+                              ( ElmMember
+                                "Maybe"
+                                "Extra"
+                              )
+                              "unwrap"
+                            )
+                            [ ElmFuncAppl "withDefault"
+                              [ ElmFuncAppl
+                                (ElmExprIdent $ "int" ++ tshow dw)
+                                [0]
+                              , ElmFuncAppl
+                                (ElmMember "Array" "get")
+                                [ "n"
+                                , ElmMember "simState" i
+                                ]
+                              ]
+                            , if (fst <$> instMemIndex) == Just i
+                              then "encodeInst"
+                              else ElmExprIdent $ "int" ++ tshow dw
+                            ]
+                          )
+                          "<<"
+                          ( if (fst <$> instMemIndex) == Just i
+                            then "readInst"
+                            else ElmMember "String" "toInt"
+                          )
+                        )
+                      ]
+                    )
+                    "<<"
+                    (ElmMember "Array" "fromList")
+                  )
+                  "<|"
+                  "xs"
+                )
+              ]
           )
         ]
         | Memory i dw aw <- memorys

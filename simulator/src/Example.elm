@@ -350,16 +350,23 @@ tick simState =
 
 getLeds : SimState -> List Bool
 getLeds simState =
-    intToBits simState.buffer ++ intToBits (withDefault (int8 0) (Array.get (toInt simState.pc) simState.progMem)) ++ intToBits simState.pc ++ intToBits simState.accum
+    intToBits simState.buffer
+        ++ intToBits (withDefault (int8 0) (Array.get (toInt simState.pc) simState.progMem))
+        ++ intToBits simState.pc
+        ++ intToBits simState.accum
 
 
 getInspectibleMems : SimState -> List (InspectibleMem SimState)
 getInspectibleMems simState =
-    [ { title = "Contents of progMem"
+    [ { name = "progMem"
       , contents =
             List.map
                 (\n ->
-                    { value = Maybe.Extra.unwrap "" (showInst << decodeInst) << Array.get n <| simState.progMem
+                    { value =
+                        Maybe.Extra.unwrap "" (showInst << decodeInst)
+                            << Array.get n
+                        <|
+                            simState.progMem
                     , set =
                         Maybe.map
                             (\i ->
@@ -372,12 +379,34 @@ getInspectibleMems simState =
                     }
                 )
                 (List.range 0 ((2 ^ 4) - 1))
+      , setAll =
+            \xs ->
+                { simState
+                    | progMem =
+                        Array.indexedMap
+                            (\n ->
+                                Maybe.Extra.unwrap
+                                    (withDefault
+                                        (int8 0)
+                                        (Array.get n simState.progMem)
+                                    )
+                                    encodeInst
+                                    << readInst
+                            )
+                            << Array.fromList
+                        <|
+                            xs
+                }
       }
-    , { title = "Contents of dataMem"
+    , { name = "dataMem"
       , contents =
             List.map
                 (\n ->
-                    { value = Maybe.Extra.unwrap "" (String.fromInt << toInt) << Array.get n <| simState.dataMem
+                    { value =
+                        Maybe.Extra.unwrap "" (String.fromInt << toInt)
+                            << Array.get n
+                        <|
+                            simState.dataMem
                     , set =
                         Maybe.map
                             (\x ->
@@ -390,6 +419,24 @@ getInspectibleMems simState =
                     }
                 )
                 (List.range 0 ((2 ^ 4) - 1))
+      , setAll =
+            \xs ->
+                { simState
+                    | dataMem =
+                        Array.indexedMap
+                            (\n ->
+                                Maybe.Extra.unwrap
+                                    (withDefault
+                                        (int4 0)
+                                        (Array.get n simState.dataMem)
+                                    )
+                                    int4
+                                    << String.toInt
+                            )
+                            << Array.fromList
+                        <|
+                            xs
+                }
       }
     ]
 
