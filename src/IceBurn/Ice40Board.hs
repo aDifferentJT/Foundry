@@ -1,4 +1,4 @@
-{-# LANGUAGE LambdaCase, NoImplicitPrelude, OverloadedStrings, RecordWildCards #-}
+{-# LANGUAGE LambdaCase, NoImplicitPrelude, NumericUnderscores, OverloadedStrings, RecordWildCards #-}
 {-|
 Module      : IceBurn.Ice40Board
 Description : Interact with an Ice 40 FPGA
@@ -32,6 +32,7 @@ import ClassyPrelude
 
 import Utils (Endianness(..), encodeWord32, decodeWord32, zipMaybe, wrapError)
 
+import Control.Concurrent (forkIO, killThread, threadDelay)
 import Control.Monad.Except (ExceptT(..), runExceptT, throwError)
 import Control.Monad.Trans (lift)
 import Data.Bits (shiftR, (.&.))
@@ -67,7 +68,11 @@ dataInAddress :: EndpointAddress
 dataInAddress = EndpointAddress 4 In
 
 findEndpointDesc :: Interface -> EndpointAddress -> Either Text EndpointDesc
-findEndpointDesc is a = maybe (Left $ "Cannot find endpoint for address " ++ tshow a) Right . find ((== a) . endpointAddress) . concat . map interfaceEndpoints $ is
+findEndpointDesc is a =
+  maybe (throwError $ "Cannot find endpoint for address " ++ tshow a) return 
+  . find ((== a) . endpointAddress)
+  . concatMap interfaceEndpoints
+  $ is
 
 data Ice40Board = Ice40Board
   { boardDevice  :: DeviceHandle
@@ -273,7 +278,7 @@ flashGetId (M25P10Flash io) =
 
 waitForBoard :: Ctx -> VendorId -> ProductId -> IO Device
 waitForBoard ctx vendorId productId = do
-  putStrLn "Waiting for board attachment..."
+  printThreadId <- forkIO $ threadDelay 100_000 >> putStrLn "Waiting for board attachment..."
   mv <- newEmptyMVar
   mask_ $
     registerHotplugCallback
@@ -286,14 +291,15 @@ waitForBoard ctx vendorId productId = do
       (\dev event -> tryPutMVar mv (dev, event) $> DeregisterThisCallback)
     >>= void . mkWeakMVar mv . deregisterHotplugCallback
   (dev, _) <- takeMVar mv
+  killThread printThreadId
   return dev
 
 -- Enumerate all devices and find the right one.
 findBoard :: Ctx -> VendorId -> ProductId -> IO Device
-findBoard ctx vendorId productId = do
-    getDevices ctx >>= (headMay <$>) . filterM (fmap match . getDeviceDesc) >>= \case
-      Nothing  -> hPutStrLn stderr "Board not found" >> exitFailure
-      Just dev -> return dev
+findBoard ctx vendorId productId =
+  getDevices ctx >>= (headMay <$>) . filterM (fmap match . getDeviceDesc) >>= \case
+    Nothing  -> hPutStrLn stderr "Board not found" >> exitFailure
+    Just dev -> return dev
   where
     match :: DeviceDesc -> Bool
     match DeviceDesc{..} = deviceVendorId  == vendorId && deviceProductId == productId
