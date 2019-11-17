@@ -8,6 +8,7 @@ import Parser (parseFile)
 import CodeGen (genCode)
 import Assembler.GenAssembler (genAssembler)
 import Simulator.GenSimulator (genSimulator)
+import Simulator.HostSimulator (hostSimulator)
 import CallSynth (callSynth)
 import IceBurn (burn)
 
@@ -17,12 +18,13 @@ import Control.Monad.Trans (lift)
 import System.Console.GetOpt
   ( ArgOrder(Permute)
   , OptDescr(Option)
-  , ArgDescr(NoArg)
+  , ArgDescr(..)
   , getOpt
   , usageInfo
   )
 import System.Environment (getArgs)
 import System.FilePath ((-<.>), dropExtensions, takeBaseName, replaceBaseName)
+import Text.Read (readMaybe)
 
 main :: IO ()
 main = runExceptT 
@@ -31,19 +33,30 @@ main = runExceptT
     ast <- parseFile fn
     let verilog = genCode ast
     when shouldGenVerilog . lift . writeFileUtf8 (fn -<.> "v") $ verilog
-    when shouldGenAssembler . lift . genAssembler (dropExtensions . replaceBaseName fn $ (takeBaseName fn ++ "_assembler")) $ ast
-    when shouldGenSimulator . lift . genSimulator (fn -<.> "html") $ ast
     when shouldBurn $ (lift . callSynth $ verilog) >>= burn
+    when shouldGenAssembler . lift . genAssembler (dropExtensions . replaceBaseName fn $ (takeBaseName fn ++ "_assembler")) $ ast
+    lift $ case shouldGenSimulator of
+      NoSimulator ->
+        return ()
+      WriteToFile simFn ->
+        genSimulator simFn ast
+      HostOnPort p ->
+        hostSimulator p ast
     ) >>= \case
     Left err -> putStr err
     Right () -> return ()
+
+data SimulatorDest
+  = NoSimulator
+  | WriteToFile FilePath
+  | HostOnPort Int
 
 data Options = Options
   { fn :: FilePath
   , shouldGenVerilog :: Bool
   , shouldBurn :: Bool
   , shouldGenAssembler :: Bool
-  , shouldGenSimulator :: Bool
+  , shouldGenSimulator :: SimulatorDest
   , showHelp :: Bool
   }
 
@@ -53,7 +66,7 @@ defaultOptions = Options
   False
   False
   False
-  False
+  NoSimulator
   False
 
 options :: [OptDescr (Options -> Options)]
@@ -61,7 +74,8 @@ options =
   [ Option ['v'] ["verilog"] (NoArg $ \o -> o { shouldGenVerilog = True }) "Generate the verilog"
   , Option ['b'] ["burn"] (NoArg $ \o -> o { shouldBurn = True }) "Burn to the board"
   , Option ['a'] ["assembler"] (NoArg $ \o -> o { shouldGenAssembler = True }) "Generate an assembler"
-  , Option ['s'] ["simulator"] (NoArg $ \o -> o { shouldGenSimulator = True }) "Generate a simulator"
+  , Option ['s'] ["simulator"] (ReqArg (\a o -> o { shouldGenSimulator = maybe (WriteToFile a) HostOnPort . readMaybe $ a }) "<file|port>")
+    "Generate a simulator then, if a file is given, write to the specified file, if a port is given then host"
   , Option ['h'] ["help"] (NoArg $ \o -> o { showHelp = True }) "Print this help message"
   ]
 

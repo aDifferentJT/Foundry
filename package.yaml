@@ -36,6 +36,8 @@ library:
     - mono-traversable
     - mtl
     - process
+    - snap-core
+    - snap-server
     - split
     - temporary
     - text
