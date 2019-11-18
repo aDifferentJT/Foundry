@@ -17,14 +17,13 @@ module Parser.Lexer
 
 import ClassyPrelude
 
-import qualified Control.Monad.Trans.State as State
-import qualified Data.Text as Text
-import Text.Read (read)
-
+import Bits (Bit(..))
 import Parser.AlexPosn (AlexPosn, Locatable(Locatable))
 import Parser.Monad
 
-import Utils (Bit(..))
+import qualified Control.Monad.Trans.State as State
+import qualified Data.Text as Text
+import Text.Read (read)
 }
 
 $digit = 0-9       -- digits

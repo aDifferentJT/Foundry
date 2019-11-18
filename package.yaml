@@ -25,6 +25,7 @@ library:
   source-dirs: src
   exposed-modules:
     - Assembler.GenAssembler
+    - Bits
     - CallSynth
     - CodeGen
     - IceBurn
@@ -35,7 +36,6 @@ library:
     - Parser.Monad
     - Simulator.GenSimulator
     - Simulator.HostSimulator
-    - Utils
 
   build-tools:
     - alex

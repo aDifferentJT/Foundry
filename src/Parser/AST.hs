@@ -46,7 +46,7 @@ import ClassyPrelude
 
 import Proc
 
-import Utils (Bit)
+import Bits (Bit)
 
 import Control.Lens (makeLenses)
 import qualified Data.Map as Map

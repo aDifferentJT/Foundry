@@ -14,10 +14,11 @@ module Verilog.GenAST
 
 import ClassyPrelude
 
+import Bits (Bit(..), Endianness(..), bitsToInt)
 import Proc
 import qualified Verilog.AST as V
 import Verilog.Align
-import Utils (Bit(..), Endianness(Little), bitsToInt, groupWith)
+import Utils (groupWith)
 
 import Data.List (transpose)
 import Data.Maybe (mapMaybe, maybeToList)

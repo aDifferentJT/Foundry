@@ -14,6 +14,13 @@ module Simulator.GenSimulator
 
 import ClassyPrelude
 
+import Bits (Bit(..), Endianness(..), bitsToInt)
+import Simulator.Elm.AST
+import Proc
+import Utils (flap, textHeadToUpper)
+
+import Paths_Foundry
+
 import Data.List (elemIndex, foldl)
 import Data.Maybe (fromJust, fromMaybe, mapMaybe)
 import Data.Text.IO (hPutStrLn)
@@ -22,12 +29,6 @@ import System.Environment (lookupEnv)
 import System.FilePath ((-<.>), (</>), takeBaseName, takeDirectory)
 import System.IO (Handle)
 import System.Process (CreateProcess(cwd), createProcess, proc, waitForProcess)
-
-import Simulator.Elm.AST
-import Proc
-import Utils
-
-import Paths_Foundry
 
 elmType :: Type -> ElmType
 elmType (RegT _)  = "String"

@@ -4,13 +4,12 @@ module Main(main) where
 
 import ClassyPrelude hiding (Handler)
 
+import Bits (Endianness(Little), bitsToInt)
 import Parser (parseM, parse')
 import Parser.AlexPosn (AlexPosn(AlexPosn), Locatable(..))
 import Parser.Errors (runErrors, forgive)
 import Parser.Lexer (Token(..), readToken)
 import Parser.Monad (Defn(..), ParserState(..), initialParserState, runParser')
-
-import Utils (Endianness(Little), bitsToInt, untilM)
 
 import Data.Maybe (fromMaybe, listToMaybe)
 
@@ -37,6 +36,10 @@ import Language.Haskell.LSP.Types
 import Language.Haskell.LSP.Types.Lens
 import Language.Haskell.LSP.VFS
 import System.IO (stdin, stdout)
+
+untilM :: Monad m => Int -> (a -> Bool) -> m a -> m (Maybe a)
+untilM 0 _ _ = return Nothing
+untilM n f m = m >>= \x -> if f x then return . Just $ x else untilM (n-1) f m
 
 data Config = Config
   deriving Show

@@ -57,6 +57,7 @@ module Parser.Monad
 
 import ClassyPrelude
 
+import Bits (Bit)
 import Parser.AlexPosn
   ( AlexPosn(AlexPosn)
   , Locatable(Locatable, locatableValue, locatablePosns)
@@ -79,7 +80,7 @@ import Parser.AST
   )
 import Parser.Errors hiding (recover, unrecover)
 import qualified Parser.Errors as Errors
-import Utils (Bit, mapLeft)
+import Utils (mapLeft)
 
 import Control.Arrow ((***))
 import Control.Monad (when)

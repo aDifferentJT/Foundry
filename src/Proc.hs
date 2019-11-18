@@ -31,7 +31,7 @@ module Proc
 
 import ClassyPrelude
 
-import Utils (Bit)
+import Bits (Bit)
 
 -- | The types supported by the type system
 data Type

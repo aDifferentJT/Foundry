@@ -14,7 +14,7 @@ module Verilog.AST
 
 import ClassyPrelude
 
-import Utils (Bit)
+import Bits (Bit)
 
 data Verilog
   = RawVerilog Text

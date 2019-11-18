@@ -14,6 +14,13 @@ module Assembler.GenAssembler
 
 import ClassyPrelude
 
+import Assembler.C.AST
+import Bits (Bit)
+import Proc
+import Utils (groupWith)
+
+import Paths_Foundry
+
 import Data.List (elemIndex)
 import Data.Maybe (fromJust, fromMaybe, mapMaybe)
 import Data.Text.IO (hPutStrLn)
@@ -21,12 +28,6 @@ import System.Environment (lookupEnv)
 import System.FilePath ((-<.>), takeBaseName, takeDirectory)
 import System.IO (Handle)
 import System.Process (callProcess)
-
-import Assembler.C.AST
-import Proc
-import Utils
-
-import Paths_Foundry
 
 genStringIn :: CExpr -> [Text] -> CExpr
 genStringIn x []  = 0

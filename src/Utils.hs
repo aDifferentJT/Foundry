@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, LambdaCase, MultiParamTypeClasses, NoImplicitPrelude, OverloadedStrings, RankNTypes, TupleSections, TypeFamilies, UndecidableInstances #-}
+{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, NoImplicitPrelude, OverloadedStrings, RankNTypes, TupleSections, TypeFamilies, UndecidableInstances #-}
 
 {-|
 Module      : Utils
@@ -11,10 +11,7 @@ Stability   : experimental
 A few random utility functions, if there were enough of these I would consider splitting it into different modules and possibly a separate package.
 -}
 module Utils
-  ( Bit(Zero, One)
-  , Endianness(Little, Big)
-  , bitsToInt
-  , intToBits
+  ( Endianness(..)
   , encodeWord8
   , encodeWord16
   , encodeWord32
@@ -37,13 +34,14 @@ module Utils
   , (****)
   , joinTailsToHeads
   , zipMaybe
-  , whileM
-  , untilM
   , wrapError
-  , readProcess
   , flap
   , textHeadToUpper
   ) where
+
+import ClassyPrelude
+
+import Bits (Endianness(..))
 
 import Control.Arrow ((***))
 import Control.Monad.Except (MonadError, catchError, throwError)
@@ -57,45 +55,6 @@ import System.Process (CreateProcess(..), StdStream(..), proc, waitForProcess, w
 
 import qualified Text.ParserCombinators.ReadPrec as ReadPrec
 import Text.Read (readPrec)
-
-import ClassyPrelude
-
--- | A single bit
-data Bit
-  = Zero -- ^ A 0 bit
-  | One  -- ^ A 1 bit
-  deriving (Eq, Ord, Enum)
-
-instance Show Bit where
-  show Zero = "0"
-  show One  = "1"
-
-instance Read Bit where
-  readPrec = ReadPrec.get >>= \case
-    '0' -> return Zero
-    '1' -> return One
-    _   -> ReadPrec.pfail
-
--- | The different endiannesses
-data Endianness
-  = Little
-  | Big
-
--- | Turn some bits into a number
-bitsToInt :: Endianness -> [Bit] -> Int
-bitsToInt e = case e of
-  Little -> foldl (flip f) 0
-  Big    -> foldr f 0
-  where f :: Bit -> Int -> Int
-        f b = (fromEnum b .|.) . flip shiftL 1
-
--- | Turn a number into bits
-intToBits :: Endianness -> Int -> [Bit]
-intToBits Little = unfoldr f
-  where f :: Int -> Maybe (Bit, Int)
-        f 0 = Nothing
-        f x = Just (toEnum (x .&. 1), shiftR x 1)
-intToBits Big    = reverse . intToBits Little
 
 infixr 0 .$.
 (.$.) :: (a -> b) -> (a, a) -> (b, b)
@@ -222,14 +181,6 @@ zipMaybe  []     ys    = map ((Nothing,) . Just) ys
 zipMaybe  xs     []    = map ((,Nothing) . Just) xs
 zipMaybe (x:xs) (y:ys) = (Just x, Just y) : zipMaybe xs ys
 
-whileM :: Monad m => Int -> (a -> Bool) -> m a -> m (Maybe a)
-whileM 0 _ _ = return Nothing
-whileM n f m = m >>= \x -> if f x then whileM (n-1) f m else return . Just $ x
-
-untilM :: Monad m => Int -> (a -> Bool) -> m a -> m (Maybe a)
-untilM 0 _ _ = return Nothing
-untilM n f m = m >>= \x -> if f x then return . Just $ x else untilM (n-1) f m
-
 wrapError :: MonadError e m => m () -> m a -> m () -> m a
 wrapError pre act post = do
   pre
@@ -238,24 +189,6 @@ wrapError pre act post = do
   case res of
     Left x  -> return x
     Right e -> throwError e
-
-readProcess :: FilePath -> [String] -> ByteString -> IO ByteString
-readProcess fn args input = do
-    let cp_opts = (proc fn args) {
-                    std_in  = CreatePipe,
-                    std_out = CreatePipe
-                  }
-    withCreateProcess cp_opts $
-      \mb_inH mb_outH _ ph ->
-        case (mb_inH, mb_outH) of
-          (Just inH, Just outH) -> do
-            hPut inH input
-            hClose inH
-            output <- hGetContents outH
-            void . waitForProcess $ ph
-            return output
-          (Nothing,_) -> error "readCreateProcess: Failed to get a stdin handle."
-          (_,Nothing) -> error "readCreateProcess: Failed to get a stdout handle."
 
 flap :: Functor f => f (a -> b) -> a -> f b
 flap fs x = fmap ($ x) fs
