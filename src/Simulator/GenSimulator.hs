@@ -21,12 +21,11 @@ import Utils (flap, textHeadToUpper)
 
 import Paths_Foundry
 
-import Data.List (elemIndex, foldl)
-import Data.Maybe (fromJust, fromMaybe, mapMaybe)
+import Data.List (foldl)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text.IO (hPutStrLn)
 import System.Directory (copyFile, createDirectory, getCurrentDirectory)
-import System.Environment (lookupEnv)
-import System.FilePath ((-<.>), (</>), takeBaseName, takeDirectory)
+import System.FilePath ((</>), takeBaseName)
 import System.IO (Handle)
 import System.Process (CreateProcess(cwd), createProcess, proc, waitForProcess)
 
@@ -55,13 +54,13 @@ elmBoolExpr Proc{..} (LogicalOrExpr e1 e2)  = ElmBinOp (elmBoolExpr Proc{..} e1)
 elmExpr :: Proc -> Int -> Expr -> ElmExpr
 elmExpr Proc{..} _ (VarExpr _ i)         = ElmExprIdent $ "arg_" ++ i
 elmExpr Proc{..} _ (RegExpr _ i)         = ElmMember "simState" i
-elmExpr Proc{..} w (MemAccessExpr _ i e) =
+elmExpr Proc{..} _ (MemAccessExpr _ i e) =
   let (dw, aw) =
         fromMaybe (0, 0)
         . headMay
         . mapMaybe (\case
-              Memory i' dw aw
-                | i == i'   -> Just (dw, aw)
+              Memory i' dw' aw'
+                | i == i'   -> Just (dw', aw')
                 | otherwise -> Nothing
             )
         $ memorys
@@ -74,17 +73,17 @@ elmExpr Proc{..} w (MemAccessExpr _ i e) =
         ]
     ]
 elmExpr Proc{..} w (ConstExpr n)         = ElmFuncAppl (ElmExprIdent $ "int" ++ tshow w) [ElmExprInt n]
-elmExpr Proc{..} w (BinaryConstExpr bs)  = ElmFuncAppl (ElmExprIdent $ "int" ++ (tshow . length $ bs)) [ElmExprInt . bitsToInt Little $ bs]
+elmExpr Proc{..} _ (BinaryConstExpr bs)  = ElmFuncAppl (ElmExprIdent $ "int" ++ (tshow . length $ bs)) [ElmExprInt . bitsToInt Little $ bs]
 elmExpr Proc{..} w (OpExpr _ o e1 e2)    = ElmFuncAppl "binOpW" [elmOp o, elmExpr Proc{..} w e1, elmExpr Proc{..} w e2]
 elmExpr Proc{..} w (TernaryExpr _ c t f) = ElmTernOp (elmBoolExpr Proc{..} c) (elmExpr Proc{..} w t) (elmExpr Proc{..} w f)
 
 elmImplRule :: Proc -> ImplRule -> (Text, ElmExpr)
-elmImplRule Proc{..} (ImplRule (VarLValue _) e) = error "Doesn't support register arguments"
+elmImplRule Proc{..} (ImplRule (VarLValue _) _) = error "Doesn't support register arguments"
 elmImplRule Proc{..} (ImplRule (RegLValue i) e) =
   let w =
         fromMaybe 0
         . headMay
-        . mapMaybe (\(Reg i' w _) -> if i == i' then Just w else Nothing)
+        . mapMaybe (\(Reg i' w' _) -> if i == i' then Just w' else Nothing)
         $ regs
   in
   (i, elmExpr Proc{..} w e)
@@ -170,7 +169,7 @@ genShowInst Proc{..} = ElmStmts
   [ ElmTypeSig "showInst" (ElmFuncType "Inst" "String")
   , ElmDef (ElmPatFuncAppl "showInst" ["i"])
     . ElmCaseExpr "i"
-    $ [ ( ElmPatFuncAppl (textHeadToUpper i) (zipWith (\n _ -> ElmPatIdent . ("arg" ++) . tshow $ n) [1..] as)
+    $ [ ( ElmPatFuncAppl (textHeadToUpper i) (zipWith (\n _ -> ElmPatIdent . ("arg" ++) . tshow $ n) [1 :: Int ..] as)
         , foldl
             (\e (n, a) ->
               ElmBinOp e "++"
@@ -182,7 +181,7 @@ genShowInst Proc{..} = ElmStmts
               $ n
             )
             (ElmStringExpr i)
-          . zip [1..]
+          . zip [1 :: Int ..]
           $ as
         )
         | Inst i as _ _ <- insts
@@ -212,7 +211,7 @@ genReadInst Proc{..} = ElmStmts
             "<|"
             "s"
         )
-    $ [ ( ElmListPat $ ElmStringPat i : zipWith (\n _ -> ElmPatIdent . ("arg" ++) . tshow $ n) [1..] as
+    $ [ ( ElmListPat $ ElmStringPat i : zipWith (\n _ -> ElmPatIdent . ("arg" ++) . tshow $ n) [1 :: Int ..] as
         , foldl
             (\e (n, a) ->
               ElmFuncAppl
@@ -222,7 +221,7 @@ genReadInst Proc{..} = ElmStmts
                 ]
             )
             (ElmFuncAppl "Just" [ElmExprIdent . textHeadToUpper $ i])
-          . zip [1..]
+          . zip [1 :: Int ..]
           $ as
         )
         | Inst i as _ _ <- insts
@@ -278,7 +277,7 @@ genDecodeInst Proc{..} = ElmStmts
         genArg (RegT _)  _ = ElmStringExpr ""
         genArg (BitsT _) _ = ElmTupleExpr []
         genArg (IntT w)  i = ElmFuncAppl "bitsToInt" [ElmListExpr . map (ElmExprIdent . (i ++) . tshow) $ [1..w]]
-        genArg  InstT    i = ElmTupleExpr []
+        genArg  InstT    _ = ElmTupleExpr []
 
 genEncodeInst :: Proc -> ElmStmt
 genEncodeInst Proc{..} = ElmStmts
@@ -302,7 +301,7 @@ genEncodeInst Proc{..} = ElmStmts
         )
   , ElmDef (ElmPatFuncAppl "encodeInst" ["i"])
     . ElmCaseExpr "i"
-    $ [ ( ElmPatFuncAppl (textHeadToUpper i) (zipWith (\n _ -> ElmPatIdent . ("arg" ++) . tshow $ n) [1..] as)
+    $ [ ( ElmPatFuncAppl (textHeadToUpper i) (zipWith (\n _ -> ElmPatIdent . ("arg" ++) . tshow $ n) [1 :: Int ..] as)
         , encode ts as (ConcatBitsExpr (length bs + sizeOfEnc enc) (ConstBitsExpr bs) enc)
         )
         | Inst i ts _ (as, (bs, enc)) <- insts
@@ -311,11 +310,11 @@ genEncodeInst Proc{..} = ElmStmts
   where encode :: [Type] -> [Text] -> BitsExpr -> ElmExpr
         encode _  _  (ConstBitsExpr bs) = ElmFuncAppl (ElmExprIdent . ("int" ++) . tshow . length $ bs) [ElmExprInt . bitsToInt Big $ bs]
         encode ts as (EncBitsExpr _ i) =
-          case headMay . mapMaybe (\(n, (t, a)) -> if a == i then Just (n, t) else Nothing) . zip [1..] $ zip ts as of
-            Just (n, RegT _)  -> error "Reg argument not supported"
-            Just (n, BitsT _) -> error "Bits argument not supported"
+          case headMay . mapMaybe (\(n, (t, a)) -> if a == i then Just (n, t) else Nothing) . zip [1 :: Int ..] $ zip ts as of
+            Just (_, RegT _)  -> error "Reg argument not supported"
+            Just (_, BitsT _) -> error "Bits argument not supported"
             Just (n, IntT _)  -> ElmExprIdent $ "arg" ++ tshow n
-            Just (n, InstT)   -> error "Inst argument not supported"
+            Just (_, InstT)   -> error "Inst argument not supported"
             Nothing           -> error "Argument not found"
         encode ts as (ConcatBitsExpr _ e1 (ConstBitsExpr [])) = encode ts as e1
         encode ts as (ConcatBitsExpr _ (ConstBitsExpr []) e2) = encode ts as e2
@@ -378,8 +377,8 @@ genGetInspectibleMems Proc{..} = ElmStmts
       instMemIndex =
         headMay
         . mapMaybe (\case
-            ImplRule (RegLValue "inst") (MemAccessExpr _ mem index) ->
-              Just (mem, index)
+            ImplRule (RegLValue "inst") (MemAccessExpr _ mem ind) ->
+              Just (mem, ind)
             _ -> Nothing
           )
         $ always

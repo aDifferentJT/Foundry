@@ -20,7 +20,6 @@ import qualified Verilog.AST as V
 import Verilog.Align
 import Utils (groupWith)
 
-import Data.List (transpose)
 import Data.Maybe (mapMaybe, maybeToList)
 import qualified Data.Set as Set (fromList, toList)
 

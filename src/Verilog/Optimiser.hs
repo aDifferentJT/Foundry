@@ -13,11 +13,8 @@ module Verilog.Optimiser
 
 import ClassyPrelude
 
-import Verilog.AST
-
 import Utils (groupWith, selectLargestBy)
-
-import Control.Arrow ((***))
+import Verilog.AST
 
 optimise :: Verilog -> Verilog
 optimise (RawVerilog s)  = RawVerilog s
@@ -28,7 +25,7 @@ optimise (Define x ys z) = Define x ys z
 optimise (Module x ys z) = Module x ys (optimise z)
 optimise (Wire n x m y)  = Wire n x m (simplify <$> y)
 optimise (Reg  n x m y)  = Reg  n x m (simplify <$> y)
-optimise (Always x ys)   = Always x (map (\(x, y, z) -> (simplify <$> x, simplify y, simplify z)) ys)
+optimise (Always x ys)   = Always x (map (\(y1, y2, y3) -> (simplify <$> y1, simplify y2, simplify y3)) ys)
 optimise (Assign x y)    = Assign (simplify x) (simplify y)
 
 simplify :: Expr -> Expr

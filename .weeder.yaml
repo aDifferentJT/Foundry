@@ -28,4 +28,13 @@
           - ElmCons
           - ElmMonOp
           - ElmTuplePat
+      - module:
+        - name: Utils
+        - identifier:
+          - decodeWord16
+          - decodeWord64
+          - decodeWord8
+          - encodeWord16
+          - encodeWord64
+          - encodeWord8
 

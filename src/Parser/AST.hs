@@ -12,9 +12,9 @@ This is the data structure representing a processor definition file, it re-expor
 -}
 module Parser.AST
   ( module Proc
-  , RegType(..)
-  , InstType(..)
-  , ButtonType(..)
+  , RegType
+  , InstType
+  , ButtonType
   , MaybeBitsExpr(..)
   , sizeOfMaybeEnc
   , Enc(..)

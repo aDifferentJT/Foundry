@@ -24,7 +24,7 @@ burn bs =
     boardWithGpio board $ \gpio -> do
       gpioSetReset gpio True
       boardWithSpi board 0 $ \spi -> do
-        spiSetSpeed spi 50_000_000
+        _ <- spiSetSpeed spi 50_000_000
         spiSetMode spi
 
         let flash = M25P10Flash . spiIoFunc $ spi
@@ -37,7 +37,7 @@ burn bs =
         flashChipErase flash
 
         -- Write
-        mapM (\xs -> flashPageProgram flash (maybe 0 fst . headMay $ xs) . pack . map snd $ xs) . chunksOf 256 . zip [0..] . unpack $ bs
+        mapM_ (\xs -> flashPageProgram flash (maybe 0 fst . headMay $ xs) . pack . map snd $ xs) . chunksOf 256 . zip [0..] . unpack $ bs
 
         -- Verify
         buf <- flashRead flash 0 (length bs)

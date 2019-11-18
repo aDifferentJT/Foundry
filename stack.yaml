@@ -70,4 +70,6 @@ extra-deps:
 # Allow a newer minor version of GHC than the snapshot specifies
 # compiler-check: newer-minor
 
-ghc-options: {"$locals": -ddump-to-file -ddump-hi}
+ghc-options:
+  { "$locals": -O1 -ddump-to-file -ddump-hi -Wall -Werror -Wwarn=name-shadowing
+  }

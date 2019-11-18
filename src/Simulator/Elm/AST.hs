@@ -16,14 +16,11 @@ module Simulator.Elm.AST
   , pretty
   ) where
 
-import Data.List.NonEmpty (NonEmpty)
-import qualified Data.List.NonEmpty as NonEmpty
-import Data.List.Split (splitOn)
-import Data.Text (Text)
-import qualified Data.Text as Text
-
 import ClassyPrelude
-import Utils (isPlural, mapHead, mapTail, mapHeadTail, mapLast, mapInitLast, joinTailsToHeads)
+
+import Utils (isPlural, mapHead, mapHeadTail, mapLast)
+
+import qualified Data.Text as Text
 
 data ElmAssoc = ElmLeftAssoc | ElmRightAssoc | ElmNoAssoc
 
@@ -35,7 +32,7 @@ instance Eq ElmAssoc where
 data ElmPrec
   = ElmPrecNone
   | ElmPrec0
-  | ElmPrec1
+  -- | ElmPrec1 -- isn't used
   | ElmPrec2
   | ElmPrec3
   | ElmPrec4

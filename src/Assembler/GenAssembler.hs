@@ -25,12 +25,12 @@ import Data.List (elemIndex)
 import Data.Maybe (fromJust, fromMaybe, mapMaybe)
 import Data.Text.IO (hPutStrLn)
 import System.Environment (lookupEnv)
-import System.FilePath ((-<.>), takeBaseName, takeDirectory)
+import System.FilePath ((-<.>), takeBaseName)
 import System.IO (Handle)
 import System.Process (callProcess)
 
 genStringIn :: CExpr -> [Text] -> CExpr
-genStringIn x []  = 0
+genStringIn _ []  = 0
 genStringIn x [y] = CBinOp (CFuncCall "strcmp" [x, CString y]) "==" 0
 genStringIn x ys  = CFuncCall "string_in" $ [x] ++ map CString ys ++ ["NULL"]
 
@@ -55,7 +55,7 @@ genParseInst Proc{..} = CFuncDef
     , CAssign (CArrow "inst" "width") 8
     , CIf
       [ let n = length args in
-        ( genStringIn "instName" (map (\(Inst i _ _ _) -> i) insts)
+        ( genStringIn "instName" (map (\(Inst i _ _ _) -> i) insts')
         , CBlock $
           [ CAssign (CArrow "inst" "arg_count") (CExprInt n)
           , CAssign (CArrow "inst" "args") (case n of
@@ -93,7 +93,7 @@ genParseInst Proc{..} = CFuncDef
             | (arg, i) <- zip args [0..]
           ]
         )
-        | (args, insts) <- groupWith (\(Inst _ as _ _) -> as) insts
+        | (args, insts') <- groupWith (\(Inst _ as _ _) -> as) insts
       ]
       ( Just . CBlock $
         [ CTopExpr (CFuncCall "fprintf" ["stderr", CString "Instruction %s not recognised\n"])
@@ -104,7 +104,7 @@ genParseInst Proc{..} = CFuncDef
     ]
 
 genBitsEnc :: CExpr -> [Bit] -> CStmt
-genBitsEnc dest [] = CNonStmt
+genBitsEnc _    [] = CNonStmt
 genBitsEnc dest bs =
   CTopExpr
   . CFuncCall "copy_list"
@@ -114,7 +114,7 @@ genBitsEnc dest bs =
     ] ++ map (CExprIdent . tshow) bs
 
 genBitsExprEnc :: (Text -> CExpr) -> CExpr -> Int -> CExpr -> BitsExpr -> (CStmt, Int)
-genBitsExprEnc getArg dest offset auxData (ConstBitsExpr bs) =
+genBitsExprEnc _      dest offset _       (ConstBitsExpr bs) =
   ( genBitsEnc dest bs
   , offset + length bs
   )

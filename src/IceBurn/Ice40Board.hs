@@ -30,7 +30,8 @@ module IceBurn.Ice40Board
 
 import ClassyPrelude
 
-import Utils (Endianness(..), encodeWord32, decodeWord32, zipMaybe, wrapError)
+import Data.Word.Encode (Endianness(..), encodeWord32, decodeWord32)
+import Utils (zipMaybe, wrapError)
 
 import Control.Concurrent (forkIO, killThread, threadDelay)
 import Control.Monad.Except (ExceptT(..), runExceptT, throwError)
@@ -38,22 +39,15 @@ import Control.Monad.Trans (lift)
 import Data.Bits (shiftR, (.&.))
 import Data.List (unfoldr)
 import Data.List.Split (chunksOf)
-import qualified Data.Vector as Vector
 import System.Exit (exitFailure)
 import System.IO (hPutStrLn)
 import System.USB
 
-vendorId :: VendorId
-vendorId = 0x1443
+ice40VendorId :: VendorId
+ice40VendorId = 0x1443
 
-productId :: ProductId
-productId = 0x0007
-
-cmdGetBoardType :: Word8
-cmdGetBoardType = 0xE2
-
-cmdGetBoardSerial :: Word8
-cmdGetBoardSerial = 0xE4
+ice40ProductId :: ProductId
+ice40ProductId = 0x0007
 
 cmdOutAddress :: EndpointAddress
 cmdOutAddress = EndpointAddress 1 Out
@@ -89,8 +83,8 @@ withBoard act = do
 
   dev <- lift $
     if ctx `hasCapability` HasHotplug
-    then waitForBoard ctx vendorId productId
-    else findBoard    ctx vendorId productId
+    then waitForBoard ctx ice40VendorId ice40ProductId
+    else findBoard    ctx ice40VendorId ice40ProductId
 
   ConfigDesc{..} <- lift $ getConfigDesc dev 0
   intf <- maybe (throwError "No Interface found") return . headMay $ configInterfaces
@@ -189,23 +183,28 @@ spiSetMode (SPI board) =
 spiIoFunc :: SPI -> ByteString -> Size -> ExceptT Text IO ByteString
 spiIoFunc (SPI Ice40Board{..}) writeBytes readSize = do
   let writeBytes' = unpack writeBytes ++ replicate (readSize - length writeBytes) 0
-  boardCmd Ice40Board{..} 0x06 0x06 (pack [0x00, 0x00]) 16 -- SPI Start
-  boardCmd Ice40Board{..} 0x06 0x07 (pack [0x00, 0x00, 0x00, if readSize > 0 then 0x01 else 0x00] ++ (encodeWord32 Little . fromIntegral . length $ writeBytes')) 16 -- SPI IO Start
+  _ <- boardCmd Ice40Board{..} 0x06 0x06 (pack [0x00, 0x00]) 16 -- SPI Start
+  _ <- boardCmd
+    Ice40Board{..}
+    0x06
+    0x07
+    ( pack [0x00, 0x00, 0x00, if readSize > 0 then 0x01 else 0x00]
+    ++ (encodeWord32 Little . fromIntegral . length $ writeBytes')
+    )
+    16 -- SPI IO Start
   let writeChunks = map pack . chunksOf 64 $ writeBytes'
   let readSizes = unfoldr (\case 0 -> Nothing; x -> let y = min 64 x in Just (y, x - y)) readSize
   readBytes <- concat <$> mapM
     (uncurry (>>) . (maybe (return ()) (usbWrite boardDevice boardDataOut) *** maybe (return "") (usbRead boardDevice boardDataIn)))
     (zipMaybe writeChunks readSizes)
-  boardCmd Ice40Board{..} 0x06 0x87 (pack [0x00]) 16
-  boardCmd Ice40Board{..} 0x06 0x06 (pack [0x00, 0x01]) 16
+  _ <- boardCmd Ice40Board{..} 0x06 0x87 (pack [0x00]) 16
+  _ <- boardCmd Ice40Board{..} 0x06 0x06 (pack [0x00, 0x01]) 16
   return readBytes
 
 newtype M25P10Flash = M25P10Flash (ByteString -> Size -> ExceptT Text IO ByteString)
 
 flashStatBusy :: Word8
 flashStatBusy = 0x1
-flashStatWel :: Word8
-flashStatWel = 0x2
 
 flashCmdGetStatus :: Word8
 flashCmdGetStatus = 0x05
@@ -250,7 +249,7 @@ flashRead (M25P10Flash io) addr size = drop 5
 flashPageProgram :: M25P10Flash -> Word32 -> ByteString -> ExceptT Text IO ()
 flashPageProgram flash@(M25P10Flash io) addr buf = do
   flashSetWritable flash
-  io
+  _ <- io
     ( pack
       [ flashCmdPageProgram
       , fromIntegral . shiftR addr $ 16

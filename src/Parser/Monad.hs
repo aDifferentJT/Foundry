@@ -500,8 +500,6 @@ makeOpExpr :: Op -> Locatable Expr -> Locatable Expr -> ParserMonad (Locatable E
 makeOpExpr ConcatBits e1 e2 =
   return $ OpExpr (liftM2 (+) (widthOfExpr . locatableValue $ e1) (widthOfExpr . locatableValue $ e2)) ConcatBits <$> e1 <*> e2
 makeOpExpr op e1 e2         = do
-  let e1' = locatableValue e1
-  let e2' = locatableValue e2
   n <- case (widthOfExpr . locatableValue $ e1, widthOfExpr . locatableValue $ e2) of
     (Just n1, Just n2)
       | n1 == n2  -> return . Just $ n1
@@ -528,10 +526,10 @@ runParser' :: ParserMonad a -> Text -> Either [(Text, Maybe (AlexPosn, AlexPosn)
 runParser' m = runErrors . (fst <$>) . runStateT m . initialParserState
 
 printErrors :: Text -> Either [(Text, Maybe (AlexPosn, AlexPosn))] a -> Either Text a
-printErrors s = mapLeft (intercalate "\n" . map (printError s))
-  where printError :: Text -> (Text, Maybe (AlexPosn, AlexPosn)) -> Text
-        printError _ (e, Nothing) = e ++ "\n"
-        printError s (e, Just (AlexPosn a1 l1 c1, AlexPosn a2 l2 c2))
+printErrors s = mapLeft (intercalate "\n" . map printError)
+  where printError :: (Text, Maybe (AlexPosn, AlexPosn)) -> Text
+        printError (e, Nothing) = e ++ "\n"
+        printError (e, Just (AlexPosn a1 l1 c1, AlexPosn a2 l2 c2))
           | l1 == l2 =
               let (line1, line2) =  (reverse . takeWhile (/= '\n') . reverse *** takeWhile (/= '\n')) . splitAt a1 $ s in
               prettyPosn (Just (AlexPosn a1 l1 c1, AlexPosn a2 l2 c2)) ++ ": " ++ e ++ "\n" ++ line1 ++ line2 ++ "\n" ++ replicate (c1 - 1) ' ' ++ replicate (c2 - c1) '^' ++ "\n"

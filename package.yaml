@@ -59,7 +59,7 @@ library:
     - vector
 
 executables:
-  Foundry-exe:
+  foundry:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
@@ -71,13 +71,14 @@ executables:
       - classy-prelude
       - filepath
       - mtl
-  Foundry-Language-Server-exe:
+  foundry-language-server:
     main:                Main.hs
     source-dirs:         language_server
     dependencies:
       - Foundry
       - classy-prelude
       - containers
+      - data-default
       - either
       - haskell-lsp
       - haskell-lsp-types

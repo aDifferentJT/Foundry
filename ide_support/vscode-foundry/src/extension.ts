@@ -13,7 +13,7 @@ let client: LanguageClient;
 
 export function activate(context: ExtensionContext) {
     print("Running");
-    let serverOptions: ServerOptions = { command : "Foundry-Language-Server-exe" };
+    let serverOptions: ServerOptions = { command : "foundry-language-server" };
 
     // Options to control the language client
     let clientOptions: LanguageClientOptions = {

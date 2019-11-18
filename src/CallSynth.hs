@@ -18,7 +18,6 @@ import Paths_Foundry
 
 import Control.Concurrent (forkIO)
 import Data.Text.IO (hPutStrLn)
-import System.FilePath ((-<.>), takeBaseName)
 import System.IO (Handle, openFile)
 import System.Process
   ( ProcessHandle
@@ -60,7 +59,7 @@ makeAsc blifH ascH = do
     , std_out = UseHandle ascH
     , std_err = UseHandle nullH
     }
-  forkIO $ waitForProcess ph >> hClose nullH
+  _ <- forkIO $ waitForProcess ph >> hClose nullH
   return ph
 
 makeBin :: Handle -> Handle -> IO ProcessHandle
@@ -85,7 +84,7 @@ callSynth verilog =
       ascP <- makeAsc blifH ascOut
       binP <- makeBin ascIn binOut
       bin <- hGetContents binIn
-      waitForProcess ascP
-      waitForProcess binP
+      _ <- waitForProcess ascP
+      _ <- waitForProcess binP
       return bin
 

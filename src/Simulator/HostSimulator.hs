@@ -14,12 +14,11 @@ module Simulator.HostSimulator
 
 import ClassyPrelude
 
-import Control.Concurrent (ThreadId, forkIO)
-import Snap.Core
-import Snap.Http.Server
-
 import Proc (Proc)
 import Simulator.GenSimulator
+
+import Snap.Core
+import Snap.Http.Server
 
 hostSimulator :: Int -> Proc -> IO ()
 hostSimulator port ast = do

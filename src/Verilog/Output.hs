@@ -18,8 +18,6 @@ import Verilog.Align
 
 import Utils (mapInitLast)
 
-import Data.List (transpose)
-
 output :: Int -> Verilog -> Text
 output _ (RawVerilog s)  = s
 output l (Comment s)     = replicate (2 * l) ' ' ++ "// " ++ s
@@ -96,18 +94,17 @@ outputExpr l False (TernaryOp x y z)   =
   ++ outputExpr l False z
 outputExpr l b     (MultiCond d [])    = outputExpr l b d
 outputExpr l False (MultiCond d es)    =
-     combineLines' ' ' " " "" [ [p ++ outputExpr (l + 1) True c, "?", outputExpr (l + 1) True e, ":"] | (c, e) <- es]
+  combineLines' ' ' " " "" [ [p ++ outputExpr (l + 1) True c, "?", outputExpr (l + 1) True e, ":"] | (c, e) <- es]
   ++ p
   ++ outputExpr (l + 1) False d
   where p = "\n" ++ replicate (2 * l) ' ' 
-outputExpr l b     (FoldR o a [])      = outputExpr l b a
-outputExpr l b     (FoldR o a [x])     = outputExpr l b x
-outputExpr l False (FoldR o a xs)      =
-  if null xs
-  then
-    outputExpr l False a
-  else
-    combineLines ' ' " " "" . mapInitLast (, o) (, "") . map (\x -> p ++ outputExpr (l + 1) True x) $ xs
+outputExpr l b     (FoldR _ a [])      = outputExpr l b a
+outputExpr l b     (FoldR _ _ [x])     = outputExpr l b x
+outputExpr l False (FoldR o _ xs)      =
+  combineLines ' ' " " ""
+  . mapInitLast (, o) (, "")
+  . map (\x -> p ++ outputExpr (l + 1) True x)
+  $ xs
   where p = "\n" ++ replicate (2 * l) ' ' 
 outputExpr _ _      UndefinedBehaviour = "0"
 outputExpr l True   e                  = "(" ++ outputExpr l False e ++ ")"

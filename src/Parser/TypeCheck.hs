@@ -6,11 +6,9 @@ import ClassyPrelude
 
 import Parser.AST
 import Parser.Monad
-
 import Utils (intersectionWithKey3)
 
 import qualified Data.Map as Map
-import Data.Maybe (mapMaybe)
 
 typeCheck :: RawProc -> ParserMonad Proc
 typeCheck RawProc{..} = do
@@ -24,7 +22,6 @@ typeCheck RawProc{..} = do
           | otherwise     -> Just (vs, rs)
         _                 -> Nothing
         ) _rawImpls
-  let instName n vs = unwords (n : ["<" ++ v ++ ">" | v <- vs])
   let insts = Map.elems $ intersectionWithKey3 Inst _rawInsts instImpls instEncs
   let buttonImpls = Map.mapMaybe (\case ButtonImpl rs -> Just rs; _ -> Nothing) _rawImpls
   let buttons = Map.elems $ Map.intersectionWithKey Button _rawButtons buttonImpls

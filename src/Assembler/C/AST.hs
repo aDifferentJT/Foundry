@@ -11,14 +11,10 @@ Stability   : experimental
 module Assembler.C.AST
   where
 
-import Data.List.NonEmpty (NonEmpty)
-import qualified Data.List.NonEmpty as NonEmpty
-import Data.List.Split (splitOn)
-import Data.Text (Text)
-import qualified Data.Text as Text
-
 import ClassyPrelude
 import Utils (mapHead, joinTailsToHeads)
+
+import qualified Data.Text as Text
 
 type CIdent = Text
 
@@ -130,7 +126,7 @@ instance Pretty CStmt where
       . (" " ++)
       . (i ++)
       . ("(" ++)
-      . (intercalate ", " [pretty t ++ " " ++ i | (t, i) <- as] ++)
+      . (intercalate ", " [pretty at ++ " " ++ ai | (at, ai) <- as] ++)
       . (") " ++)
       )
       (prettyLines b)
