@@ -1,4 +1,4 @@
-{-# LANGUAGE LambdaCase, NoImplicitPrelude, NumericUnderscores, OverloadedStrings, RecordWildCards #-}
+{-# LANGUAGE LambdaCase, NoImplicitPrelude, NumericUnderscores, OverloadedStrings, RecordWildCards, TupleSections #-}
 {-|
 Module      : IceBurn.Ice40Board
 Description : Interact with an Ice 40 FPGA
@@ -31,10 +31,9 @@ module IceBurn.Ice40Board
 import ClassyPrelude
 
 import Data.Word.Encode (Endianness(..), encodeWord32, decodeWord32)
-import Utils (zipMaybe, wrapError)
 
 import Control.Concurrent (forkIO, killThread, threadDelay)
-import Control.Monad.Except (ExceptT(..), runExceptT, throwError)
+import Control.Monad.Except (ExceptT(..), MonadError, catchError, runExceptT, throwError)
 import Control.Monad.Trans (lift)
 import Data.Bits (shiftR, (.&.))
 import Data.List (unfoldr)
@@ -42,6 +41,20 @@ import Data.List.Split (chunksOf)
 import System.Exit (exitFailure)
 import System.IO (hPutStrLn)
 import System.USB
+
+zipMaybe :: [a] -> [b] -> [(Maybe a, Maybe b)]
+zipMaybe  []     ys    = map ((Nothing,) . Just) ys
+zipMaybe  xs     []    = map ((,Nothing) . Just) xs
+zipMaybe (x:xs) (y:ys) = (Just x, Just y) : zipMaybe xs ys
+
+wrapError :: MonadError e m => m () -> m a -> m () -> m a
+wrapError pre act post = do
+  pre
+  res <- catchError (Left <$> act) (return . Right)
+  post
+  case res of
+    Left x  -> return x
+    Right e -> throwError e
 
 ice40VendorId :: VendorId
 ice40VendorId = 0x1443

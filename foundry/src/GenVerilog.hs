@@ -16,7 +16,7 @@ import ClassyPrelude
 
 import Data.Bit (Bit)
 import Data.Bit.List (Endianness(..), bitsToInt)
-import Proc
+import Language.Foundry.Proc
 import Language.Verilog.Align
 import qualified Language.Verilog.AST as V
 import Language.Verilog.Optimiser (optimise)

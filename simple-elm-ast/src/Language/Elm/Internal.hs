@@ -1,4 +1,4 @@
-{-# LANGUAGE ExistentialQuantification, FlexibleInstances, NoImplicitPrelude, OverloadedStrings, RankNTypes, TupleSections #-}
+{-# LANGUAGE NoImplicitPrelude, OverloadedStrings #-}
 
 {-|
 Module      : Language.Elm.Internal
@@ -27,7 +27,7 @@ instance Eq ElmAssoc where
 data ElmPrec
   = ElmPrecNone
   | ElmPrec0
-  | ElmPrec1
+  -- | ElmPrec1 -- not used
   | ElmPrec2
   | ElmPrec3
   | ElmPrec4

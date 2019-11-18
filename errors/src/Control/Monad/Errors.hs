@@ -1,14 +1,14 @@
-{-# LANGUAGE FlexibleInstances, FlexibleContexts, MultiParamTypeClasses, NoImplicitPrelude #-}
+{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, NoImplicitPrelude #-}
 
 {-|
-Module      : Parser.Errors
+Module      : Control.Monad.Errors
 Description : A monad capable of logging multiple errors
 Copyright   : (c) Jonathan Tanner, 2019
 Licence     : GPL-3
 Maintainer  : jonathan.tanner@sjc.ox.ac.uk
 Stability   : experimental
 -}
-module Parser.Errors
+module Control.Monad.Errors
   ( Errors
   , runErrors
   , recover

@@ -1,7 +1,7 @@
-{-# LANGUAGE NoImplicitPrelude, RecordWildCards, FlexibleInstances, MultiParamTypeClasses, UndecidableInstances #-}
+{-# LANGUAGE NoImplicitPrelude #-}
 
 {-|
-Module      : Parser.AlexPosn
+Module      : Language.Foundry.Parser.AlexPosn
 Description : The data structure representing a position in the input stream
 Copyright   : (c) Jonathan Tanner, 2019
 Licence     : GPL-3
@@ -10,16 +10,22 @@ Stability   : experimental
 
 This is a data structure representing a position in the input stream together with an applicative functor for wrapping values with a corresponding section of the input stream for nice error messages
 -}
-module Parser.AlexPosn
+module Language.Foundry.Parser.AlexPosn
   ( AlexPosn(AlexPosn)
   , Locatable(Locatable, locatableValue, locatablePosns)
   ) where
 
 import ClassyPrelude
 
-import Utils ((****))
-
 import Control.Applicative (liftA2)
+
+-- | Combine two binary functions to give a binary function on pairs
+(****) :: (a -> b -> c)    -- ^ A function \(f\)
+       -> (a' -> b' -> c') -- ^ A function \(g\)
+       -> (a, a')          -- ^ Values \((x_1, y_1)\)
+       -> (b, b')          -- ^ Values \((x_2, y_2)\)
+       -> (c, c')          -- ^ \((f(x_1, x_2), g(x_1, x_2))\)
+f **** g = uncurry (***) . (f *** g)
 
 -- | `AlexPosn' records the location of a token in the input text.  It has three
 -- fields: @address@ (number of characters preceding the token), @line@
@@ -35,7 +41,7 @@ data Locatable a = Locatable
   deriving Show
 
 instance Functor Locatable where
-  fmap f Locatable{..} = Locatable{ locatableValue = f locatableValue, .. }
+  fmap f l = l { locatableValue = f . locatableValue $ l }
 
 -- | This has the new location spanning the locations of the inputs
 instance Applicative Locatable where

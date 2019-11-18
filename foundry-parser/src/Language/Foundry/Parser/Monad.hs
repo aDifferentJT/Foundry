@@ -1,6 +1,6 @@
-{-# LANGUAGE FlexibleInstances, FlexibleContexts, LambdaCase, MultiParamTypeClasses, NoImplicitPrelude, OverloadedStrings, TupleSections, RecordWildCards #-}
+{-# LANGUAGE FlexibleContexts, LambdaCase, MultiParamTypeClasses, NoImplicitPrelude, OverloadedStrings, TupleSections, RecordWildCards #-}
 {-|
-Module      : Parser.Monad
+Module      : Language.Foundry.Parser.Monad
 Description : The monad threaded through the parser
 Copyright   : (c) Jonathan Tanner, 2019
 Licence     : GPL-3
@@ -9,7 +9,7 @@ Stability   : experimental
 
 This is the monad that is threaded through the lexer and the parser
 -}
-module Parser.Monad
+module Language.Foundry.Parser.Monad
   ( alexMove
   , AlexInput(AlexInput, charPos, charPrev, pending, str)
   , ignorePendingBytes
@@ -58,11 +58,11 @@ module Parser.Monad
 import ClassyPrelude
 
 import Data.Bit (Bit)
-import Parser.AlexPosn
+import Language.Foundry.Parser.AlexPosn
   ( AlexPosn(AlexPosn)
   , Locatable(Locatable, locatableValue, locatablePosns)
   )
-import Parser.AST
+import Language.Foundry.Parser.AST
   ( Type(..)
   , EncType(EncType)
   , MaybeBitsExpr(..)
@@ -77,8 +77,8 @@ import Parser.AST
   , InstType
   , ButtonType
   )
-import Parser.Errors hiding (recover, unrecover)
-import qualified Parser.Errors as Errors
+import Control.Monad.Errors hiding (recover, unrecover)
+import qualified Control.Monad.Errors as Errors
 
 import Maps.Either (mapLeft)
 

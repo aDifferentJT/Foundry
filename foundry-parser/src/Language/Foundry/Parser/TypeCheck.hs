@@ -1,10 +1,10 @@
 {-# LANGUAGE LambdaCase, NoImplicitPrelude, OverloadedStrings, RecordWildCards #-}
 
-module Parser.TypeCheck (typeCheck) where
+module Language.Foundry.Parser.TypeCheck (typeCheck) where
 
 import ClassyPrelude
 
-import Parser.AST
+import Language.Foundry.Parser.AST
 
 import qualified Data.Map.Strict as Map
 

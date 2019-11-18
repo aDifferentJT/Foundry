@@ -1,22 +1,22 @@
 {
-{-# LANGUAGE LambdaCase, NoImplicitPrelude, OverloadedStrings, RankNTypes, RecordWildCards, TupleSections #-}
+{-# LANGUAGE LambdaCase, NoImplicitPrelude, OverloadedStrings, RankNTypes #-}
 {-|
-Module      : Parser
+Module      : Language.Foundry.Parser
 Description : The parser
 Copyright   : (c) Jonathan Tanner, 2019
 Licence     : GPL-3
 Maintainer  : jonathan.tanner@sjc.ox.ac.uk
 Stability   : experimental
 -}
-module Parser (parseM, parse', parse, parseFile) where
+module Language.Foundry.Parser (parseM, parse', parse, parseFile) where
 
 import ClassyPrelude hiding (readFile)
 
-import Parser.AST
-import Parser.AlexPosn
-import Parser.Lexer
-import Parser.Monad
-import Parser.TypeCheck
+import Language.Foundry.Parser.AST
+import Language.Foundry.Parser.AlexPosn
+import Language.Foundry.Parser.Lexer
+import Language.Foundry.Parser.Monad
+import Language.Foundry.Parser.TypeCheck
 
 import Control.Applicative (liftA2)
 import Control.Lens (Lens', over)

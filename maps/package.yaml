@@ -31,3 +31,9 @@ library:
     - classy-prelude
     - text
 
+tests:
+  HLint-test:
+    main:                test/HLint.hs
+    dependencies:
+      - hlint
+

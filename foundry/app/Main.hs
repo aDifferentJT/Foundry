@@ -9,7 +9,7 @@ import GenAssembler (genAssembler)
 import GenSimulator (genSimulator, hostSimulator)
 import GenVerilog (genVerilog)
 import IceBurn (burn)
-import Parser (parseFile)
+import Language.Foundry.Parser (parseFile)
 
 import Control.Monad (when)
 import Control.Monad.Except (ExceptT, runExceptT, throwError)

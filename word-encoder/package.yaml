@@ -1,4 +1,4 @@
-name:                foundry-language-server
+name:                word-encoder
 version:             0.1.0.0
 github:              "nixCodeX/Foundry"
 license:             GPL-3
@@ -18,26 +18,13 @@ description:         Please see the README on GitHub at <https://github.com/nixC
 dependencies:
   - base >= 4.7 && < 5.0
 
-executables:
-  foundry-language-server:
-    main:                Main.hs
-    source-dirs:         src
-    dependencies:
-      - bit-list
-      - classy-prelude
-      - containers
-      - data-default
-      - either
-      - errors
-      - foundry-parser
-      - haskell-lsp
-      - haskell-lsp-types
-      - lens
-      - mtl
-      - rope-utf16-splay
-      - sorted-list
-      - text
-      - transformers
+library:
+  source-dirs: src
+  exposed-modules:
+    - Data.Word.Encode
+  dependencies:
+    - bit-list
+    - classy-prelude
 
 tests:
   HLint-test:

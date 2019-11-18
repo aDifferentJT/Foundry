@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, NoImplicitPrelude, OverloadedStrings, RankNTypes, TupleSections, TypeFamilies, UndecidableInstances #-}
+{-# LANGUAGE NoImplicitPrelude, OverloadedStrings #-}
 
 {-|
 Module      : Maps.Text

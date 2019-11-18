@@ -1,19 +1,9 @@
 - package:
-  - name: Foundry
+  - name: iceburn
   - section:
     - name: library
     - message:
       - name: Weeds exported
-      - module:
-        - name: Assembler.C.AST
-        - identifier:
-          - CContinue
-          - CDefine
-          - CParen
-          - CTernOp
-          - CTypeIdent
-          - CUndefine
-          - prettyLines
       - module:
         - name: IceBurn.Ice40Board
         - identifier:
@@ -21,20 +11,19 @@
           - flashGetStatus
           - flashSetWritable
           - flashWaitDone
+- package:
+  - name: simple-elm-ast
+  - section:
+    - name: library
+    - message:
+      - name: Weeds exported
       - module:
-        - name: Simulator.Elm.AST
+        - name: Language.Elm.Internal
         - identifier:
-          - ElmComment
-          - ElmCons
-          - ElmMonOp
-          - ElmTuplePat
-      - module:
-        - name: Utils
-        - identifier:
-          - decodeWord16
-          - decodeWord64
-          - decodeWord8
-          - encodeWord16
-          - encodeWord64
-          - encodeWord8
+          - ElmPrec2
+          - ElmPrec3
+          - ElmPrec4
+          - ElmPrec6
+          - ElmPrec7
+          - ElmPrec8
 

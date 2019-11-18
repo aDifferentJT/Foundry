@@ -1,4 +1,4 @@
-{-# LANGUAGE ExistentialQuantification, FlexibleInstances, NoImplicitPrelude, OverloadedStrings, RankNTypes, TupleSections #-}
+{-# LANGUAGE NoImplicitPrelude, OverloadedStrings, TupleSections #-}
 
 {-|
 Module      : Language.Elm.Pretty

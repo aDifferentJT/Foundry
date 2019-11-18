@@ -1,7 +1,7 @@
 {-# LANGUAGE NoImplicitPrelude, TemplateHaskell #-}
 
 {-|
-Module      : Parser.AST
+Module      : Language.Foundry.Parser.AST
 Description : The data structure representing a processor definition file
 Copyright   : (c) Jonathan Tanner, 2019
 Licence     : GPL-3
@@ -10,8 +10,8 @@ Stability   : experimental
 
 This is the data structure representing a processor definition file, it re-exports everything from the "Proc" module
 -}
-module Parser.AST
-  ( module Proc
+module Language.Foundry.Parser.AST
+  ( module Language.Foundry.Proc
   , RegType
   , InstType
   , ButtonType
@@ -44,7 +44,7 @@ module Parser.AST
 
 import ClassyPrelude
 
-import Proc
+import Language.Foundry.Proc
 
 import Data.Bit (Bit)
 

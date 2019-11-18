@@ -4,12 +4,12 @@ module Main(main) where
 
 import ClassyPrelude hiding (Handler)
 
+import Control.Monad.Errors (runErrors, forgive)
 import Data.Bit.List (Endianness(Little), bitsToInt)
-import Parser (parseM, parse')
-import Parser.AlexPosn (AlexPosn(AlexPosn), Locatable(..))
-import Parser.Errors (runErrors, forgive)
-import Parser.Lexer (Token(..), readToken)
-import Parser.Monad (Defn(..), ParserState(..), initialParserState, runParser')
+import Language.Foundry.Parser (parseM, parse')
+import Language.Foundry.Parser.AlexPosn (AlexPosn(AlexPosn), Locatable(..))
+import Language.Foundry.Parser.Lexer (Token(..), readToken)
+import Language.Foundry.Parser.Monad (Defn(..), ParserState(..), initialParserState, runParser')
 
 import Control.Concurrent (forkIO)
 import Control.Lens ((^.), view)

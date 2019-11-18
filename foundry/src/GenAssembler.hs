@@ -14,10 +14,10 @@ module GenAssembler
 
 import ClassyPrelude
 
+import Data.Bit (Bit)
 import Language.C.AST
 import Language.C.Pretty (pretty)
-import Data.Bit (Bit)
-import Proc
+import Language.Foundry.Proc
 import Utils (groupWith)
 
 import Paths_foundry

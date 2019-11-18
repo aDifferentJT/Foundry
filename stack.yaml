@@ -30,12 +30,16 @@ resolver: lts-13.19
 #   - wai
 packages:
 - bit-list
+- errors
 - foundry
 - foundry-language-server
+- foundry-parser
+- iceburn
 - maps
 - simple-c-ast
 - simple-elm-ast
 - simple-verilog-ast
+- word-encoder
 # Dependency packages to be pulled from upstream that are not in the resolver.
 # These entries can reference officially published versions as well as
 # forks / in-progress versions pinned to a git hash. For example:

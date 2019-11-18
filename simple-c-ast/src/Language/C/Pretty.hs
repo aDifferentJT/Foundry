@@ -1,4 +1,4 @@
-{-# LANGUAGE ExistentialQuantification, FlexibleInstances, GADTs, NoImplicitPrelude, OverloadedStrings, RankNTypes #-}
+{-# LANGUAGE NoImplicitPrelude, OverloadedStrings #-}
 
 {-|
 Module      : Language.C.Pretty

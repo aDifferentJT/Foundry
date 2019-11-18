@@ -3,14 +3,14 @@
 {-# LANGUAGE NoImplicitPrelude, OverloadedStrings, RecordWildCards #-}
 
 {-|
-Module      : Parser.Lexer
+Module      : Language.Foundry.Parser.Lexer
 Description : The lexer
 Copyright   : (c) Jonathan Tanner, 2019
 Licence     : GPL-3
 Maintainer  : jonathan.tanner@sjc.ox.ac.uk
 Stability   : experimental
 -}
-module Parser.Lexer
+module Language.Foundry.Parser.Lexer
   ( Token(..)
   , readToken
   ) where
@@ -18,8 +18,8 @@ module Parser.Lexer
 import ClassyPrelude
 
 import Data.Bit (Bit)
-import Parser.AlexPosn (AlexPosn, Locatable(Locatable))
-import Parser.Monad
+import Language.Foundry.Parser.AlexPosn (AlexPosn, Locatable(Locatable))
+import Language.Foundry.Parser.Monad
 
 import qualified Control.Monad.Trans.State as State
 import qualified Data.Text as Text

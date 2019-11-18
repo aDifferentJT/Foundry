@@ -1,6 +1,6 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 {-|
-Module      : Proc
+Module      : Language.Foundry.Proc
 Description : The data structure representing a processor
 Copyright   : (c) Jonathan Tanner, 2019
 Licence     : GPL-3
@@ -9,7 +9,7 @@ Stability   : experimental
 
 This is the data structure representing a processor to be passed between modules
 -}
-module Proc
+module Language.Foundry.Proc
   ( Type(..)
   , EncType(..)
   , BitsExpr(..)
