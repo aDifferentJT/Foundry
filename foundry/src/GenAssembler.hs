@@ -15,6 +15,7 @@ module GenAssembler
 import ClassyPrelude
 
 import Language.C.AST
+import Language.C.Pretty (pretty)
 import Data.Bit (Bit)
 import Proc
 import Utils (groupWith)
@@ -135,8 +136,8 @@ genBitsExprEnc getArg dest offset auxData (ConcatBitsExpr _ xs ys) =
 genEncReg :: Proc -> CStmt
 genEncReg Proc{..} = CFuncDef
   "reg_error_t"
-  ("encReg" :: CIdent)
-  [(CPtr "char", "reg" :: CIdent), (CPtr "bit_t", "dest" :: CIdent), ("int", "width" :: CIdent)]
+  "encReg"
+  [(CPtr "char", "reg"), (CPtr "bit_t", "dest"), ("int", "width")]
   . CBlock
   $ [ CSwitch (genStringIn "reg" (map fst regs'))
       . CBlock

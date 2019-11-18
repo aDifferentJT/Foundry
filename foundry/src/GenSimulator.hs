@@ -18,6 +18,7 @@ import ClassyPrelude
 import Data.Bit (Bit(..))
 import Data.Bit.List (Endianness(..), bitsToInt)
 import Language.Elm.AST
+import Language.Elm.Pretty (pretty)
 import Maps.Text (textHeadToUpper)
 import Proc
 import Utils (flap)

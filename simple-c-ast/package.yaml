@@ -25,6 +25,7 @@ library:
   source-dirs: src
   exposed-modules:
     - Language.C.AST
+    - Language.C.Pretty
   dependencies:
     - classy-prelude
     - maps

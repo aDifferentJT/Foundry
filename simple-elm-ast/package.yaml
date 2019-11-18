@@ -25,6 +25,7 @@ library:
   source-dirs: src
   exposed-modules:
     - Language.Elm.AST
+    - Language.Elm.Pretty
   dependencies:
     - classy-prelude
     - maps
