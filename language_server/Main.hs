@@ -139,7 +139,7 @@ reactor LspFuncs{..} ch = forever . ((liftIO . atomically . readTMChan $ ch) >>=
       ++ [ CompletionItem 
              var
              (Just CiVariable)
-             ( Just case defn of
+             ( Just $ case defn of
                  RegDefn  n     -> "A register of width " ++ tshow n
                  InstDefn _     -> "An instruction"
                  ButtonDefn     -> "A button" ++ tshow (req ^. params . position . line)
@@ -238,9 +238,8 @@ documentRangeFormattingHandler               = Nothing
 documentTypeFormattingHandler                :: Maybe (Handler DocumentOnTypeFormattingRequest)
 documentTypeFormattingHandler                = Nothing
 
-renameHandler                                :: Handler RenameRequest
-renameHandler req                            = do
-  return ()
+renameHandler                                :: Maybe (Handler RenameRequest)
+renameHandler                                = Nothing
 
 prepareRenameHandler                         :: Maybe (Handler PrepareRenameRequest)
 prepareRenameHandler                         = Nothing
@@ -300,9 +299,8 @@ initializedHandler notif                     =
 willSaveTextDocumentNotificationHandler      :: Maybe (Handler WillSaveTextDocumentNotification)
 willSaveTextDocumentNotificationHandler      = Nothing
 
-cancelNotificationHandler                    :: Handler CancelNotification
-cancelNotificationHandler notif              = do
-  return ()
+cancelNotificationHandler                    :: Maybe (Handler CancelNotification)
+cancelNotificationHandler                    = Nothing
 
 responseHandler                              :: Handler BareResponseMessage
 responseHandler resp                         =
@@ -393,7 +391,7 @@ main = do
       , documentFormattingHandler                    = Main.documentFormattingHandler
       , documentRangeFormattingHandler               = Main.documentRangeFormattingHandler
       , documentTypeFormattingHandler                = Main.documentTypeFormattingHandler
-      , renameHandler                                = Just Main.renameHandler
+      , renameHandler                                = Main.renameHandler
       , prepareRenameHandler                         = Main.prepareRenameHandler
       , foldingRangeHandler                          = Main.foldingRangeHandler
       , documentLinkHandler                          = Main.documentLinkHandler
@@ -409,7 +407,7 @@ main = do
       , didChangeWorkspaceFoldersNotificationHandler = Main.didChangeWorkspaceFoldersNotificationHandler
       , initializedHandler                           = Just Main.initializedHandler
       , willSaveTextDocumentNotificationHandler      = Main.willSaveTextDocumentNotificationHandler
-      , cancelNotificationHandler                    = Just Main.cancelNotificationHandler
+      , cancelNotificationHandler                    = Main.cancelNotificationHandler
       , responseHandler                              = Just Main.responseHandler
       , initializeRequestHandler                     = Just Main.initializeRequestHandler
       , exitNotificationHandler                      = Main.exitNotificationHandler

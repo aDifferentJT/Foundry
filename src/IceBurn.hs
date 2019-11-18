@@ -1,4 +1,4 @@
-{-# LANGUAGE LambdaCase, NoImplicitPrelude, NumericUnderscores, OverloadedStrings, RecordWildCards #-}
+{-# LANGUAGE NoImplicitPrelude, NumericUnderscores, OverloadedStrings #-}
 {-|
 Module      : IceBurn
 Description : Burn the data to the iCE40

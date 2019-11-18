@@ -149,10 +149,10 @@ boardCmdI Ice40Board{..} bs size = do
   usbRead boardDevice boardCmdIn size
 
 boardCmd :: Ice40Board -> Word8 -> Word8 -> ByteString -> Size -> ExceptT Text IO ByteString
-boardCmd board cmd subCmd payload size =
-  boardCmdI board (cons cmd . cons subCmd $ payload) size
+boardCmd board cmd subCmd =
+  boardCmdI board . cons cmd . cons subCmd
 
-data GPIO = GPIO Ice40Board
+newtype GPIO = GPIO Ice40Board
 
 boardWithGpio :: Ice40Board -> (GPIO -> ExceptT Text IO a) -> ExceptT Text IO a
 boardWithGpio board act = wrapError
@@ -170,7 +170,7 @@ gpioSetReset :: GPIO -> Bool -> ExceptT Text IO ()
 gpioSetReset gpio True  = gpioSetDir gpio 1 >> gpioSetValue gpio 0
 gpioSetReset gpio False = gpioSetDir gpio 0
 
-data SPI = SPI Ice40Board
+newtype SPI = SPI Ice40Board
 
 boardWithSpi :: Ice40Board -> Word8 -> (SPI -> ExceptT Text IO a) -> ExceptT Text IO a
 boardWithSpi board portNum act = wrapError
@@ -200,7 +200,7 @@ spiIoFunc (SPI Ice40Board{..}) writeBytes readSize = do
   boardCmd Ice40Board{..} 0x06 0x06 (pack [0x00, 0x01]) 16
   return readBytes
 
-data M25P10Flash = M25P10Flash (ByteString -> Size -> ExceptT Text IO ByteString)
+newtype M25P10Flash = M25P10Flash (ByteString -> Size -> ExceptT Text IO ByteString)
 
 flashStatBusy :: Word8
 flashStatBusy = 0x1

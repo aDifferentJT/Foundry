@@ -1,4 +1,4 @@
-{-# LANGUAGE LambdaCase, NoImplicitPrelude, OverloadedStrings, RecordWildCards, TupleSections #-}
+{-# LANGUAGE LambdaCase, NoImplicitPrelude, OverloadedStrings, RecordWildCards #-}
 
 {-|
 Module      : Simulator.GenSimulator
@@ -77,17 +77,13 @@ elmExpr Proc{..} w (BinaryConstExpr bs)  = ElmFuncAppl (ElmExprIdent $ "int" ++ 
 elmExpr Proc{..} w (OpExpr _ o e1 e2)    = ElmFuncAppl "binOpW" [elmOp o, elmExpr Proc{..} w e1, elmExpr Proc{..} w e2]
 elmExpr Proc{..} w (TernaryExpr _ c t f) = ElmTernOp (elmBoolExpr Proc{..} c) (elmExpr Proc{..} w t) (elmExpr Proc{..} w f)
 
-elmImplRule :: Proc -> ImplRule -> (ElmIdent, ElmExpr)
+elmImplRule :: Proc -> ImplRule -> (Text, ElmExpr)
 elmImplRule Proc{..} (ImplRule (VarLValue _) e) = error "Doesn't support register arguments"
 elmImplRule Proc{..} (ImplRule (RegLValue i) e) =
   let w =
         fromMaybe 0
         . headMay
-        . mapMaybe (\case
-              Reg i' w _
-                | i == i'   -> Just w
-                | otherwise -> Nothing
-            )
+        . mapMaybe (\(Reg i' w _) -> if i == i' then Just w else Nothing)
         $ regs
   in
   (i, elmExpr Proc{..} w e)
@@ -95,11 +91,7 @@ elmImplRule Proc{..} (ImplRule (MemAccessLValue i e1) e2) =
   let w =
         fromMaybe 0
         . headMay
-        . mapMaybe (\case
-              Memory i' dw _
-                | i == i'   -> Just dw
-                | otherwise -> Nothing
-            )
+        . mapMaybe (\(Memory i' dw _) -> if i == i' then Just dw else Nothing)
         $ memorys
   in
   ( i

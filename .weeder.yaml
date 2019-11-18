@@ -1,0 +1,31 @@
+- package:
+  - name: Foundry
+  - section:
+    - name: library
+    - message:
+      - name: Weeds exported
+      - module:
+        - name: Assembler.C.AST
+        - identifier:
+          - CContinue
+          - CDefine
+          - CParen
+          - CTernOp
+          - CTypeIdent
+          - CUndefine
+          - prettyLines
+      - module:
+        - name: IceBurn.Ice40Board
+        - identifier:
+          - boardGetSerial
+          - flashGetStatus
+          - flashSetWritable
+          - flashWaitDone
+      - module:
+        - name: Simulator.Elm.AST
+        - identifier:
+          - ElmComment
+          - ElmCons
+          - ElmMonOp
+          - ElmTuplePat
+

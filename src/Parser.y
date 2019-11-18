@@ -18,8 +18,6 @@ import Parser.Lexer
 import Parser.Monad
 import Parser.TypeCheck
 
-import Utils (Bit(..))
-
 import Control.Applicative (liftA2)
 import Control.Lens (Lens', over)
 import Control.Monad.Trans (lift)

@@ -1,4 +1,4 @@
-{-# LANGUAGE NoImplicitPrelude, OverloadedStrings, RecordWildCards, TupleSections #-}
+{-# LANGUAGE NoImplicitPrelude, OverloadedStrings #-}
 
 {-|
 Module      : CallSynth
@@ -13,8 +13,6 @@ module CallSynth
   ) where
 
 import ClassyPrelude
-
-import Utils (readProcess)
 
 import Paths_Foundry
 

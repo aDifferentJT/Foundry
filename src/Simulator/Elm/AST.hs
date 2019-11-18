@@ -9,7 +9,12 @@ Maintainer  : jonathan.tanner@sjc.ox.ac.uk
 Stability   : experimental
 -}
 module Simulator.Elm.AST
-  where
+  ( ElmType(..)
+  , ElmPattern(..)
+  , ElmExpr(..)
+  , ElmStmt(..)
+  , pretty
+  ) where
 
 import Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
@@ -73,22 +78,20 @@ data ElmIndent
   | ElmIndentBy Int ElmIndent
   | ElmIndentToMul Int ElmIndent
 
-type ElmIdent = Text
-
 data ElmType
-  = ElmTypeIdent ElmIdent
+  = ElmTypeIdent Text
   | ElmFuncType ElmType ElmType
   | ElmTupleType [ElmType]
-  | ElmRecordType [(ElmIdent, ElmType)]
-  | ElmTypeFuncAppl ElmIdent [ElmType]
+  | ElmRecordType [(Text, ElmType)]
+  | ElmTypeFuncAppl Text [ElmType]
 
 instance IsString ElmType where
   fromString = ElmTypeIdent . fromString
 
 data ElmPattern
-  = ElmPatIdent ElmIdent
+  = ElmPatIdent Text
   | ElmPatInt Int
-  | ElmPatFuncAppl ElmIdent [ElmPattern]
+  | ElmPatFuncAppl Text [ElmPattern]
   | ElmTuplePat [ElmPattern]
   | ElmCons ElmPattern ElmPattern
   | ElmListPat [ElmPattern]
@@ -106,20 +109,20 @@ instance Num ElmPattern where
   negate = error "Num instance only for fromInteger"
 
 data ElmExpr
-  = ElmExprIdent ElmIdent
+  = ElmExprIdent Text
   | ElmExprInt Int
-  | ElmBinOp ElmExpr ElmIdent ElmExpr
-  | ElmMonOp ElmIdent ElmExpr
+  | ElmBinOp ElmExpr Text ElmExpr
+  | ElmMonOp Text ElmExpr
   | ElmTernOp ElmExpr ElmExpr ElmExpr
   | ElmCaseExpr ElmExpr [(ElmPattern, ElmExpr)]
   | ElmLetIn ElmPattern ElmExpr ElmExpr
-  | ElmMember ElmExpr ElmIdent
+  | ElmMember ElmExpr Text
   | ElmStringExpr Text
   | ElmTupleExpr [ElmExpr]
   | ElmListExpr [ElmExpr]
   | ElmFuncAppl ElmExpr [ElmExpr]
-  | ElmRecord [(ElmIdent, ElmExpr)]
-  | ElmRecordUpdate ElmIdent [(ElmIdent, ElmExpr)]
+  | ElmRecord [(Text, ElmExpr)]
+  | ElmRecordUpdate Text [(Text, ElmExpr)]
   | ElmLambda [ElmPattern] ElmExpr
   | ElmParenExpr ElmExpr
 
@@ -135,12 +138,12 @@ instance Num ElmExpr where
   negate = error "Num instance only for fromInteger"
 
 data ElmStmt
-  = ElmModule ElmIdent [ElmIdent]
-  | ElmImport ElmIdent [ElmIdent]
-  | ElmTypeSig ElmIdent ElmType
+  = ElmModule Text [Text]
+  | ElmImport Text [Text]
+  | ElmTypeSig Text ElmType
   | ElmDef ElmPattern ElmExpr
-  | ElmTypeDef ElmIdent [(ElmIdent, [ElmType])]
-  | ElmTypeAlias ElmIdent ElmType
+  | ElmTypeDef Text [(Text, [ElmType])]
+  | ElmTypeAlias Text ElmType
   | ElmComment ElmStmt Text
   | ElmBlankLine
   | ElmStmts [ElmStmt]

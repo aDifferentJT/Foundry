@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, FunctionalDependencies, LambdaCase, MultiParamTypeClasses, NoImplicitPrelude, OverloadedStrings, RankNTypes, TupleSections, TypeFamilies, UndecidableInstances #-}
+{-# LANGUAGE FlexibleInstances, LambdaCase, MultiParamTypeClasses, NoImplicitPrelude, OverloadedStrings, RankNTypes, TupleSections, TypeFamilies, UndecidableInstances #-}
 
 {-|
 Module      : Utils

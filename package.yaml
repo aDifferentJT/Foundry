@@ -23,6 +23,20 @@ dependencies:
 
 library:
   source-dirs: src
+  exposed-modules:
+    - Assembler.GenAssembler
+    - CallSynth
+    - CodeGen
+    - IceBurn
+    - Parser
+    - Parser.AlexPosn
+    - Parser.Errors
+    - Parser.Lexer
+    - Parser.Monad
+    - Simulator.GenSimulator
+    - Simulator.HostSimulator
+    - Utils
+
   build-tools:
     - alex
     - happy
@@ -39,7 +53,6 @@ library:
     - snap-core
     - snap-server
     - split
-    - temporary
     - text
     - transformers
     - usb
@@ -72,7 +85,6 @@ executables:
       - mtl
       - rope-utf16-splay
       - sorted-list
-      - stm
       - text
       - transformers
 
@@ -114,5 +126,4 @@ tests:
   HLint-test:
     main:                test/HLint.hs
     dependencies:
-      - Foundry
       - hlint

@@ -7,7 +7,7 @@ Licence     : GPL-3
 Maintainer  : jonathan.tanner@sjc.ox.ac.uk
 Stability   : experimental
 -}
-module Verilog.Align where
+module Verilog.Align (combineLines, combineLines') where
 
 import ClassyPrelude
 import Data.List (transpose)
