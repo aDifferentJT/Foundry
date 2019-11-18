@@ -25,7 +25,7 @@ cabal.project.local~
 *.dump-hi
 
 *.lock
-Foundry.cabal
+*.cabal
 
 FPGA_examples
 FPGA.pdf

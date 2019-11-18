@@ -1,0 +1,40 @@
+name:                foundry-language-server
+version:             0.1.0.0
+github:              "nixCodeX/Foundry"
+license:             GPL-3
+author:              "Jonathan Tanner"
+maintainer:          "jonathan.tanner@sjc.ox.ac.uk"
+copyright:           "2019 Jonathan Tanner"
+
+# Metadata used when publishing your package
+# synopsis:            Easy to use toolchain for building simple processors
+# category:            Hardware, Compiler
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on GitHub at <https://github.com/nixCodeX/Foundry#readme>
+
+dependencies:
+  - base >= 4.7 && < 5.0
+
+executables:
+  foundry-language-server:
+    main:                Main.hs
+    source-dirs:         src
+    dependencies:
+      - foundry
+      - bit-list
+      - classy-prelude
+      - containers
+      - data-default
+      - either
+      - haskell-lsp
+      - haskell-lsp-types
+      - lens
+      - mtl
+      - rope-utf16-splay
+      - sorted-list
+      - text
+      - transformers
+

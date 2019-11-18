@@ -1,0 +1,116 @@
+name:                foundry
+version:             0.1.0.0
+github:              "nixCodeX/Foundry"
+license:             GPL-3
+author:              "Jonathan Tanner"
+maintainer:          "jonathan.tanner@sjc.ox.ac.uk"
+copyright:           "2019 Jonathan Tanner"
+
+extra-source-files:
+  - ../README.md
+
+# Metadata used when publishing your package
+# synopsis:            Easy to use toolchain for building simple processors
+# category:            Hardware, Compiler
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on GitHub at <https://github.com/nixCodeX/Foundry#readme>
+
+dependencies:
+  - base >= 4.7 && < 5.0
+
+library:
+  source-dirs: src
+  exposed-modules:
+    - CallSynth
+    - GenAssembler
+    - GenSimulator
+    - GenVerilog
+    - IceBurn
+    - Parser
+    - Parser.AlexPosn
+    - Parser.Errors
+    - Parser.Lexer
+    - Parser.Monad
+
+  build-tools:
+    - alex
+    - happy
+  dependencies:
+    - array
+    - bit-list
+    - classy-prelude
+    - containers
+    - directory
+    - filepath
+    - lens
+    - maps
+    - mono-traversable
+    - mtl
+    - process
+    - simple-c-ast
+    - simple-elm-ast
+    - simple-verilog-ast
+    - snap-core
+    - snap-server
+    - split
+    - text
+    - transformers
+    - usb
+    - vector
+
+executables:
+  foundry:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    dependencies:
+      - foundry
+      - classy-prelude
+      - filepath
+      - mtl
+
+data-files:
+  - ../assembler/assembler.c
+  - ../assembler/assembler.h
+  - ../assembler/plugin.h
+  - ../assembler/utils.c
+  - ../assembler/utils.h
+  - ../simulator/elm.json
+  - ../simulator/src/Interface.elm
+  - ../simulator/src/IntWidths.elm
+  - ../simulator/src/Style.elm
+  - ../verilog/pinDef.pcf
+  - ../verilog/prescaler.v
+  - ../verilog/ram.v
+  - ../verilog/single_trigger.v
+  - ../verilog/wrapper.v
+
+tests:
+  Parser-test:
+    main:                test/Parser.hs
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    dependencies:
+      - foundry
+      - classy-prelude
+  CodeGen-test:
+    main:                test/CodeGen.hs
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    dependencies:
+      - foundry
+      - classy-prelude
+  HLint-test:
+    main:                test/HLint.hs
+    dependencies:
+      - hlint
