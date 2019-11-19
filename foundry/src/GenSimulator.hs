@@ -42,15 +42,15 @@ elmType (BitsT _) = ElmTupleType []
 elmType (IntT n)  = ElmTypeFuncAppl "IntW" [ElmTypeIdent $ "Num" ++ tshow n]
 elmType  InstT    = ElmTupleType []
 
-elmOp :: Op -> ElmExpr
-elmOp Add        = ElmParenExpr "+"
-elmOp Sub        = ElmParenExpr "-"
-elmOp Mul        = ElmParenExpr "*"
-elmOp Div        = ElmParenExpr "/"
-elmOp ConcatBits = "concatBits"
-elmOp BitwiseAnd = ElmMember "Bitwise" "and"
-elmOp BitwiseOr  = ElmMember "Bitwise" "or"
-elmOp BitwiseXor = ElmMember "Bitwise" "xor"
+elmOp :: Op -> Int -> ElmExpr
+elmOp Add        _ = ElmFuncAppl "binOpW" [ElmParenExpr "+"]
+elmOp Sub        _ = ElmFuncAppl "binOpW" [ElmParenExpr "-"]
+elmOp Mul        _ = ElmFuncAppl "binOpW" [ElmParenExpr "*"]
+elmOp Div        _ = ElmFuncAppl "binOpW" [ElmParenExpr "/"]
+elmOp ConcatBits w = ElmExprIdent $ "concatBits" ++ tshow w
+elmOp BitwiseAnd _ = ElmFuncAppl "binOpW" [ElmMember "Bitwise" "and"]
+elmOp BitwiseOr  _ = ElmFuncAppl "binOpW" [ElmMember "Bitwise" "or"]
+elmOp BitwiseXor _ = ElmFuncAppl "binOpW" [ElmMember "Bitwise" "xor"]
 
 elmBoolExpr :: Proc -> BoolExpr -> ElmExpr
 elmBoolExpr Proc{..} (EqualityExpr e1 e2)   = ElmBinOp (elmExpr Proc{..} 1 e1) "==" (elmExpr Proc{..} 1 e2)
@@ -81,7 +81,7 @@ elmExpr Proc{..} _ (MemAccessExpr _ i e) =
     ]
 elmExpr Proc{..} w (ConstExpr n)         = ElmFuncAppl (ElmExprIdent $ "int" ++ tshow w) [ElmExprInt n]
 elmExpr Proc{..} _ (BinaryConstExpr bs)  = ElmFuncAppl (ElmExprIdent $ "int" ++ (tshow . length $ bs)) [ElmExprInt . bitsToInt Little $ bs]
-elmExpr Proc{..} w (OpExpr _ o e1 e2)    = ElmFuncAppl "binOpW" [elmOp o, elmExpr Proc{..} w e1, elmExpr Proc{..} w e2]
+elmExpr Proc{..} w (OpExpr _ o e1 e2)    = ElmFuncAppl (elmOp o (fromMaybe 0 . widthOfExpr $ e1)) [elmExpr Proc{..} w e1, elmExpr Proc{..} w e2]
 elmExpr Proc{..} w (TernaryExpr _ c t f) = ElmTernOp (elmBoolExpr Proc{..} c) (elmExpr Proc{..} w t) (elmExpr Proc{..} w f)
 
 elmImplRule :: Proc -> ImplRule -> (Text, ElmExpr)
