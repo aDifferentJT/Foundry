@@ -33,6 +33,7 @@ data Expr
   | Literal Int
   | Variable Text
   | Bits [Bit]
+  | Index Expr Expr Expr
   | UnaryOp Text Expr
   | BinaryOp Expr Text Expr
   | TernaryOp Expr Expr Expr
@@ -40,4 +41,7 @@ data Expr
   | FoldR Text Expr [Expr]
   | UndefinedBehaviour
   deriving (Eq, Ord)
+
+instance IsString Expr where
+  fromString = Variable . fromString
 

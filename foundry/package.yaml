@@ -60,11 +60,13 @@ executables:
       - -with-rtsopts=-N
     dependencies:
       - classy-prelude
+      - containers
       - filepath
       - foundry
       - foundry-parser
       - iceburn
       - mtl
+      - text
 
 data-files:
   - assembler/assembler.c

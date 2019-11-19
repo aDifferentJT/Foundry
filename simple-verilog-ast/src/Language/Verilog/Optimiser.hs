@@ -47,6 +47,7 @@ simplifyOnce (RawExpr s)                           = RawExpr s
 simplifyOnce (Literal n)                           = Literal n
 simplifyOnce (Variable v)                          = Variable v
 simplifyOnce (Bits bs)                             = Bits bs
+simplifyOnce (Index e i1 i2)                       = Index (simplify e) (simplify i1) (simplify i2)
 simplifyOnce (UnaryOp o x)                         = UnaryOp o (simplify x)
 simplifyOnce (BinaryOp x o y)                      = BinaryOp (simplify x) o (simplify y)
 simplifyOnce (TernaryOp _ y UndefinedBehaviour)    = simplify y

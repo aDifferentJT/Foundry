@@ -584,7 +584,7 @@ genMain _ = ElmStmts
   ]
 
 flap :: Functor f => f (a -> b) -> a -> f b
-flap fs x = fmap ($ x) fs
+flap fs = flip fmap fs . flip ($)
 
 genElm :: Proc -> ElmStmt
 genElm = ElmStmts . intersperse (ElmStmts . replicate 2 $ ElmBlankLine) . flap

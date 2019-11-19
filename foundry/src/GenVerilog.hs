@@ -24,6 +24,8 @@ import Language.Verilog.Optimiser (optimise)
 import Language.Verilog.Output (output)
 
 import Data.Maybe (mapMaybe, maybeToList)
+import Data.Map (Map)
+import qualified Data.Map as Map
 import qualified Data.Set as Set (fromList, toList)
 
 combineBlocks :: [a -> V.Verilog] -> a -> V.Verilog
@@ -136,15 +138,19 @@ genExpr argTypes ruleArgs (encArgs, (bits, enc)) e = case e of
         case argType of
           RegT size ->
             case findVarInEnc encArg (length bits) enc of
-              Just (i, j) -> V.Variable $ "_regs" ++ tshow size ++ "[inst[" ++ tshow j ++ ":" ++ tshow i ++ "]]"
+              Just (i, j) ->
+                V.Index
+                  (V.Variable $ "_regs" ++ tshow size)
+                  (V.Index "inst" (V.Literal j) (V.Literal i))
+                  (V.Index "inst" (V.Literal j) (V.Literal i))
               Nothing     -> error $ "Variable " ++ unpack var ++ " not used in encoding"
           BitsT _ ->
             case findVarInEnc encArg (length bits) enc of
-              Just (i, j) -> V.Variable $ "inst[" ++ tshow j ++ ":" ++ tshow i ++ "]"
+              Just (i, j) -> V.Index "inst" (V.Literal j) (V.Literal i)
               Nothing     -> error $ "Variable " ++ unpack var ++ " not used in encoding"
           IntT _ ->
             case findVarInEnc encArg (length bits) enc of
-              Just (i, j) -> V.Variable $ "inst[" ++ tshow j ++ ":" ++ tshow i ++ "]"
+              Just (i, j) -> V.Index "inst" (V.Literal j) (V.Literal i)
               Nothing     -> error $ "Variable " ++ unpack var ++ " not used in encoding"
           InstT -> error "Instruction argument"
       Nothing     -> error $ "No variable " ++ unpack var
@@ -169,7 +175,7 @@ genInstRule p (Inst name argTypes (ruleArgs, rules) (encArgs, (bits, enc))) =
   case mapMaybe p rules of
     []      -> Nothing
     [expr]  -> Just
-      ( V.BinaryOp (V.Variable "execute") "&" (V.Variable $ "`is_inst_" ++ name ++ "(inst)")
+      ( V.BinaryOp "execute" "&" (V.Variable $ "`is_inst_" ++ name ++ "(inst)")
       , genExpr argTypes ruleArgs (encArgs, (bits, enc)) expr
       )
     (_:_:_) -> error "More than one rule"
@@ -178,7 +184,7 @@ genIsInstRule :: (ImplRule -> Maybe Expr) -> Inst -> Maybe V.Expr
 genIsInstRule p (Inst name _ (_, rules) (_, (_, _))) =
   case mapMaybe p rules of
     []      -> Nothing
-    [_]     -> Just $ V.BinaryOp (V.Variable "execute") "&" (V.Variable $ "`is_inst_" ++ name ++ "(inst)")
+    [_]     -> Just $ V.BinaryOp "execute" "&" (V.Variable $ "`is_inst_" ++ name ++ "(inst)")
     (_:_:_) -> error "More than one rule"
 
 genButtonRule :: (ImplRule -> Maybe Expr) -> Button -> Maybe (V.Expr, V.Expr)
@@ -186,7 +192,7 @@ genButtonRule p (Button name _ rules) =
   case mapMaybe p rules of
     []      -> Nothing
     [expr]  -> Just
-      ( V.BinaryOp (V.UnaryOp "!" (V.Variable "running")) "&" (V.Variable $ name ++ "_trigger")
+      ( V.BinaryOp (V.UnaryOp "!" "running") "&" (V.Variable $ name ++ "_trigger")
       , genExpr' expr
       )
     (_:_:_) -> error "More than one rule"
@@ -195,7 +201,7 @@ genIsButtonRule :: (ImplRule -> Maybe Expr) -> Button -> Maybe V.Expr
 genIsButtonRule p (Button name _ rules) =
   case mapMaybe p rules of
     []      -> Nothing
-    [_]     -> Just $ V.BinaryOp (V.UnaryOp "!" (V.Variable "running")) "&" (V.Variable $ name ++ "_trigger")
+    [_]     -> Just $ V.BinaryOp (V.UnaryOp "!" "running") "&" (V.Variable $ name ++ "_trigger")
     (_:_:_) -> error "More than one rule"
 
 genAlwaysRule :: (ImplRule -> Maybe Expr) -> [ImplRule] -> Maybe (V.Expr, V.Expr)
@@ -203,7 +209,7 @@ genAlwaysRule p rules =
   case mapMaybe p rules of
     []      -> Nothing
     [expr]  -> Just
-      ( V.Variable "execute"
+      ( "execute"
       , genExpr' expr
       )
     (_:_:_) -> error "More than one rule"
@@ -250,7 +256,7 @@ zipFuncs = map (flip lookup) . transposeRagged . map (uncurry zip . first (:[]))
 encRegValues :: Proc -> Int -> [Text -> Maybe (V.Expr, V.Expr, V.Expr)]
 encRegValues Proc{..} size =
   mapMaybe ((const . Just . (\(x,y) -> (V.Literal 1, x, y)) <$>) . encReg [] [] ([], ([], ConstBitsExpr []))) always
-  ++ (zipFuncs . map (\(Inst n argTypes (ruleArgs, impls) enc) -> (n, mapMaybe (((\(x,y) -> (V.BinaryOp (V.Variable "execute") "&" (V.Variable $ "`is_inst_" ++ n ++ "(inst)"), x, y)) <$>) . encReg argTypes ruleArgs enc) impls)) $ insts)
+  ++ (zipFuncs . map (\(Inst n argTypes (ruleArgs, impls) enc) -> (n, mapMaybe (((\(x,y) -> (V.BinaryOp "execute" "&" (V.Variable $ "`is_inst_" ++ n ++ "(inst)"), x, y)) <$>) . encReg argTypes ruleArgs enc) impls)) $ insts)
   ++ (zipFuncs . map (\(Button n _ impls) -> (n, mapMaybe (((\(x,y) -> (V.RawExpr $ "!running & " ++ n ++ "_trigger", x, y)) <$>) . encReg [] [] ([], ([], ConstBitsExpr []))) impls)) $ buttons)
   where encReg :: [Type] -> [Text] -> ([Text], ([Bit], BitsExpr)) -> ImplRule -> Maybe (V.Expr, V.Expr)
         encReg argTypes ruleArgs enc                    (ImplRule (RegLValue r) e) =
@@ -263,7 +269,10 @@ encRegValues Proc{..} size =
                   | size == size' ->
                       case findVarInEnc encArg (length bits) enc of
                         Just (i, j) -> Just
-                          ( V.RawExpr $ "_regs" ++ tshow size ++ "[inst[" ++ tshow j ++ ":" ++ tshow i ++ "]]"
+                          ( V.Index
+                            (V.Variable $ "_regs" ++ tshow size)
+                            (V.Index "inst" (V.Literal j) (V.Literal i))
+                            (V.Index "inst" (V.Literal j) (V.Literal i))
                           , genExpr argTypes ruleArgs (encArgs, (bits, enc)) e
                           )
                         Nothing     -> error $ "Variable " ++ unpack v ++ " not used in encoding"
@@ -364,9 +373,51 @@ genMemoryOut (Memory name dataWidth _) = V.Wire dataWidth (name ++ "_out") Nothi
 genMemoryOuts :: Proc -> V.Verilog
 genMemoryOuts = V.Seq . map genMemoryOut . memorys
 
+genMemoryModule :: Map Text FilePath -> Memory -> V.Verilog
+genMemoryModule memoryFiles (Memory name dataWidth addressWidth) =
+  V.Module
+    ("RAM_" ++ name)
+    [ "input clk"
+    , "input write"
+    , "input [" ++ tshow (addressWidth - 1) ++ ":0] addr"
+    , "input [" ++ tshow (dataWidth - 1) ++ ":0] in_data"
+    , "output [" ++ tshow (dataWidth - 1) ++ ":0] out_data"
+    ]
+  . V.Seq
+  $ [ V.Reg dataWidth "memorySpace" (Just $ 2 ^ addressWidth) Nothing
+    , V.Reg dataWidth "data_out_reg" Nothing Nothing
+    , V.Always "posedge clk"
+      [ ( Just "write"
+        , V.Index "memorySpace" "addr" "addr"
+        , "in_data"
+        )
+      , ( Nothing
+        , "data_out_reg"
+        , V.Index "memorySpace" "addr" "addr"
+        )
+      ]
+    , V.Assign "out_data" "data_out_reg"
+    ] ++
+    ( fromMaybe []
+    . fmap
+      (\file ->
+        [ V.RawVerilog . intercalate "\n" $
+          [ "  initial begin"
+          , "    $readmemh(" ++ tshow file ++ ", memorySpace);"
+          , "  end"
+          ]
+        ]
+      )
+    . Map.lookup name
+    $ memoryFiles 
+    )
+
+genMemoryModules :: Map Text FilePath -> Proc -> V.Verilog
+genMemoryModules memoryFiles = V.Seq . map (genMemoryModule memoryFiles) . memorys
+
 genMemoryRAM :: Memory -> [Text]
-genMemoryRAM (Memory name dataWidth addressWidth) =
-  [ "  RAM #(.DATA_BITS(" ++ tshow dataWidth ++ "),.ADDRESS_BITS(" ++ tshow addressWidth ++ "))"
+genMemoryRAM (Memory name _ _) =
+  [ "  RAM_" ++ name
   , name
   , "(.clk(clk),"
   , ".write(" ++ name ++ "_write),"
@@ -468,7 +519,7 @@ genMemoryWrites Proc{..} = V.Seq . map (genMemoryWrite Proc{..}) $ memorys
 genLed :: LedImpl -> V.Verilog
 genLed (LedImpl n1 n2 e) =
   V.Assign
-    (V.RawExpr $ "led[" ++ tshow n2 ++ ":" ++ tshow n1 ++ "]")
+    (V.Index "led" (V.Literal n2) (V.Literal n1))
     (genExpr' e)
 
 genLeds :: Proc -> V.Verilog
@@ -491,10 +542,10 @@ genProcModule = V.Module "PROCESSOR" ["input clk", "output [23:0] led", "output 
   , genLeds
   ]
 
-genAST :: Proc -> V.Verilog
-genAST = combineBlocks [genPreamble, genProcModule]
+genAST :: Map Text FilePath -> Proc -> V.Verilog
+genAST memoryFiles = combineBlocks [genPreamble, genMemoryModules memoryFiles, genProcModule]
 
 -- | Generate the verilog code for the given processor
-genVerilog :: Proc -> Text
-genVerilog = output 0 . optimise . genAST
+genVerilog :: Map Text FilePath -> Proc -> Text
+genVerilog memoryFiles = output 0 . optimise . genAST memoryFiles
 

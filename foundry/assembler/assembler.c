@@ -185,7 +185,7 @@ void outputStmts(stmts_t* stmts, FILE* f) {
       case Stmt_Inst:
         {
           bit_t* bs = encInst(stmt->value.inst, stmts);
-          char byte = 0;
+          unsigned char byte = 0;
           int i;
           for (i = 0; i < stmt->value.inst.width; i++) {
             byte <<= 1;
@@ -198,14 +198,14 @@ void outputStmts(stmts_t* stmts, FILE* f) {
                 break;
             }
             if (i % 8 == 7) {
-              fprintf(f, "%c", byte);
+              fprintf(f, "%02hhx\n", byte);
             }
           }
           if (i % 8 != 0) {
             for (; i % 8 != 7; i++) {
               byte <<= 1;
             }
-            fprintf(f, "%c", byte);
+            fprintf(f, "%02hhx\n", byte);
           }
         }
     }

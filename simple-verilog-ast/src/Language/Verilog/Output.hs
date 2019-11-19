@@ -84,6 +84,12 @@ outputExpr _ _     (RawExpr s)         = s
 outputExpr _ _     (Literal n)         = tshow n
 outputExpr _ _     (Variable v)        = v
 outputExpr _ _     (Bits bs)           = (tshow . length $ bs) ++ "'b" ++ concatMap tshow bs
+outputExpr l _     (Index e i1 i2)     =
+  outputExpr l True e
+  ++ "["
+  ++ outputExpr l False i1
+  ++ (if i1 == i2 then "" else ":" ++ outputExpr l False i2)
+  ++ "]"
 outputExpr l _     (UnaryOp o x)       = o ++ outputExpr l True x
 outputExpr l False (BinaryOp x o y)    = outputExpr l True x ++ " " ++ o ++ " " ++ outputExpr l True y
 outputExpr l False (TernaryOp x y z)   =
