@@ -28,7 +28,7 @@ library:
   dependencies:
     - bit-list
     - classy-prelude
-    - containers
+    - group
     - maps
     - text
 

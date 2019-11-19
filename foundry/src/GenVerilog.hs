@@ -16,12 +16,12 @@ import ClassyPrelude
 
 import Data.Bit (Bit)
 import Data.Bit.List (Endianness(..), bitsToInt)
+import Data.List.Group (groupWith)
 import Language.Foundry.Proc
 import Language.Verilog.Align
 import qualified Language.Verilog.AST as V
 import Language.Verilog.Optimiser (optimise)
 import Language.Verilog.Output (output)
-import Utils (groupWith)
 
 import Data.Maybe (mapMaybe, maybeToList)
 import qualified Data.Set as Set (fromList, toList)

@@ -12,16 +12,8 @@ module Language.Verilog.Optimiser
   ) where
 
 import ClassyPrelude
-
+import Data.List.Group (groupWith)
 import Language.Verilog.AST
-
-import qualified Data.Map.Strict as Map
-
--- | Group the elements by their image under the function
-groupWith :: Ord b => (a -> b) -> [a] -> [(b, [a])]
-groupWith f = Map.toList . groupWith' f
-  where groupWith' :: Ord b => (a -> b) -> [a] -> Map.Map b [a]
-        groupWith' f' = foldr (\x -> Map.insertWith (++) (f' x) [x]) Map.empty
 
 -- | Get the largest element by some metric and the rest
 selectLargestBy :: Ord b => (a -> b) -> [a] -> (Maybe a, [a])

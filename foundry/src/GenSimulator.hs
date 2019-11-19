@@ -11,6 +11,7 @@ Stability   : experimental
 module GenSimulator
   ( genSimulator
   , hostSimulator
+  , hostSimulatorUpdate
   ) where
 
 import ClassyPrelude
@@ -21,10 +22,10 @@ import Language.Elm.AST
 import Language.Elm.Pretty (pretty)
 import Language.Foundry.Proc
 import Maps.Text (textHeadToUpper)
-import Utils (flap)
 
 import Paths_foundry
 
+import Control.Concurrent (forkIO)
 import Data.List (foldl)
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text.IO (hPutStrLn)
@@ -582,6 +583,9 @@ genMain _ = ElmStmts
   , ElmDef "main" (ElmFuncAppl "interface" ["sim"])
   ]
 
+flap :: Functor f => f (a -> b) -> a -> f b
+flap fs x = fmap ($ x) fs
+
 genElm :: Proc -> ElmStmt
 genElm = ElmStmts . intersperse (ElmStmts . replicate 2 $ ElmBlankLine) . flap
   [ genHeader
@@ -620,15 +624,32 @@ genSimulator fn ast =
     (_, _, _, ph) <- createProcess $ (proc "elm" ["make", "--output=" ++ fnAbs, "src/Main.elm"]) { cwd = Just dir }
     void . waitForProcess $ ph
 
+genSimulatorBS :: Proc -> IO ByteString
+genSimulatorBS ast =
+  withSystemTempFile "index.html" $ \tmpFn tmpH -> do
+    genSimulator tmpFn ast
+    hGetContents tmpH
+
+snapConfig :: Int -> Snap.Config Snap.Snap a
+snapConfig port =
+  Snap.setAccessLog Snap.ConfigNoLog
+  . Snap.setErrorLog Snap.ConfigNoLog
+  . Snap.setPort port
+  $ mempty
+
 hostSimulator :: Int -> Proc -> IO ()
 hostSimulator port ast = do
-  htmlBS <- withSystemTempFile "index.html" $ \tmpFn tmpH -> genSimulator tmpFn ast >> hGetContents tmpH
-  Snap.httpServe snapConfig $
+  htmlBS <- genSimulatorBS ast
+  Snap.httpServe (snapConfig port) $
     Snap.ifTop (Snap.writeBS htmlBS)
-  where snapConfig :: Snap.Config Snap.Snap a
-        snapConfig =
-          Snap.setAccessLog Snap.ConfigNoLog
-          . Snap.setErrorLog Snap.ConfigNoLog
-          . Snap.setPort port
-          $ mempty
+
+hostSimulatorUpdate :: Int -> IO (Maybe Proc -> IO ())
+hostSimulatorUpdate port = do
+  htmlBS <- newTVarIO Nothing
+  _ <- forkIO . Snap.httpServe (snapConfig port) $
+    Snap.ifTop ((liftIO . readTVarIO $ htmlBS) >>= \case
+      Just bs -> Snap.writeBS bs
+      Nothing -> Snap.modifyResponse $ Snap.setResponseStatus 503 "No file open to show"
+    )
+  return (maybe (return Nothing) (fmap Just . genSimulatorBS) >=> atomically . writeTVar htmlBS)
 

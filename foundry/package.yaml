@@ -39,6 +39,7 @@ library:
     - directory
     - filepath
     - foundry-parser
+    - group
     - maps
     - mono-traversable
     - process

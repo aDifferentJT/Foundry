@@ -87,10 +87,10 @@ getOpts = lift (getOpt Permute options <$> getArgs) >>= \case
       . pack
       . flip usageInfo options
       $ "Usage:\n    foundry [options] <filename>\n"
-    fn <- case fns of
-      []    -> throwError "Missing filename\n"
-      [fn'] -> return fn'
-      _     -> throwError "Multiple filenames\n"
-    return Options{..}
+    fn' <- case fns of
+      []     -> throwError "Missing filename\n"
+      [fn''] -> return fn''
+      _      -> throwError "Multiple filenames\n"
+    return Options{ fn = fn', .. }
   (_, _, errs) -> throwError . concatMap pack $ errs
 

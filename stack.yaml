@@ -34,6 +34,7 @@ packages:
 - foundry
 - foundry-language-server
 - foundry-parser
+- group
 - iceburn
 - maps
 - simple-c-ast

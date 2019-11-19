@@ -6,10 +6,12 @@ import ClassyPrelude hiding (Handler)
 
 import Control.Monad.Errors (runErrors, forgive)
 import Data.Bit.List (Endianness(Little), bitsToInt)
+import GenSimulator (hostSimulatorUpdate)
 import Language.Foundry.Parser (parseM, parse')
 import Language.Foundry.Parser.AlexPosn (AlexPosn(AlexPosn), Locatable(..))
 import Language.Foundry.Parser.Lexer (Token(..), readToken)
 import Language.Foundry.Parser.Monad (Defn(..), ParserState(..), initialParserState, runParser')
+import Language.Foundry.Proc (Proc)
 
 import Control.Concurrent (forkIO)
 import Control.Lens ((^.), view)
@@ -44,6 +46,7 @@ data Config = Config
 data ReactorInput
   = SendMessage FromServerMessage
   | ShowDiagnostics Uri
+  | CloseDocument
   | ShowHover HoverRequest
   | ShowCompletion CompletionRequest
 
@@ -56,30 +59,35 @@ getTokenInformation (Bits (Locatable bs _)) = Just $
   "0b" ++ (mconcat . map tshow $ bs) ++ " = " ++ (tshow . bitsToInt Little $ bs)
 getTokenInformation _ = Nothing
 
-reactor :: LspFuncs Config -> TMChan ReactorInput -> IO ()
-reactor LspFuncs{..} ch = forever . ((liftIO . atomically . readTMChan $ ch) >>=) $ \case
-  Just (SendMessage msg) -> sendFunc msg
-  Just (ShowDiagnostics uri) -> void . runMaybeT $ do
-    VirtualFile version rope _ <- MaybeT . getVirtualFileFunc . toNormalizedUri $ uri
-    case parse' . toText $ rope of
-      Right _ -> lift . flushDiagnosticsBySourceFunc 0 . Just $ "Foundry"
-      Left es -> do
-        let ds = Map.fromList
-              [ ( Just "Foundry"
-                , toSortedList
-                  [ Diagnostic
-                      (toRange range)
-                      (Just DsError)
-                      Nothing
-                      (Just "Foundry")
-                      e
-                      Nothing
-                    | (e, range) <- es
-                  ]
-                )
-              ]
-        lift . publishDiagnosticsFunc 100 (toNormalizedUri uri) (Just version) $ ds
-  Just (ShowHover req) -> void . runMaybeT $ do
+reactor :: LspFuncs Config -> TQueue ReactorInput -> (Maybe Proc -> IO ()) -> IO ()
+reactor LspFuncs{..} ch updateSimulator = forever . ((liftIO . atomically . readTQueue $ ch) >>=) $ \case
+  SendMessage msg -> sendFunc msg
+  ShowDiagnostics uri ->
+    (getVirtualFileFunc . toNormalizedUri $ uri) >>= \case
+      Nothing -> return ()
+      Just (VirtualFile version rope _) -> case parse' . toText $ rope of
+        Right p -> do
+          flushDiagnosticsBySourceFunc 0 . Just $ "Foundry"
+          updateSimulator . Just $ p
+        Left es -> do
+          let ds = Map.fromList
+                [ ( Just "Foundry"
+                  , toSortedList
+                    [ Diagnostic
+                        (toRange range)
+                        (Just DsError)
+                        Nothing
+                        (Just "Foundry")
+                        e
+                        Nothing
+                      | (e, range) <- es
+                    ]
+                  )
+                ]
+          publishDiagnosticsFunc 100 (toNormalizedUri uri) (Just version) ds
+          updateSimulator Nothing
+  CloseDocument -> updateSimulator Nothing
+  ShowHover req -> void . runMaybeT $ do
     VirtualFile _ rope _ <- MaybeT . getVirtualFileFunc . toNormalizedUri $ req ^. Lens.params . Lens.textDocument . Lens.uri
     let Position lineNum col = req ^. Lens.params . Lens.position
     let line = toText . fst . splitAtLine 1 . snd . splitAtLine lineNum $ rope
@@ -108,7 +116,7 @@ reactor LspFuncs{..} ch = forever . ((liftIO . atomically . readTMChan $ ch) >>=
       . HoverContents
       . MarkupContent MkPlainText
       $ info
-  Just (ShowCompletion req) -> void . runMaybeT $ do
+  ShowCompletion req -> void . runMaybeT $ do
     VirtualFile _ rope _ <- MaybeT . getVirtualFileFunc . toNormalizedUri $ req ^. Lens.params . Lens.textDocument . Lens.uri
     ParserState{..} <- MaybeT . return . rightToMaybe . runErrors . forgive . (snd <$>) . runStateT parseM . initialParserState . toText . fst . splitAtLine (req ^. Lens.params . Lens.position . Lens.line + 1) $ rope
     --ParserState{..} <- MaybeT . return . rightToMaybe . runErrors . forgive . (snd <$>) . runStateT parseM . initialParserState . toText $ rope
@@ -160,14 +168,11 @@ reactor LspFuncs{..} ch = forever . ((liftIO . atomically . readTMChan $ ch) >>=
            | (var, defn) <- Map.toList stateGlobalIdents
          ]
     return ()
-  Nothing -> return ()
 
-type HandlerMonad a = Reader (TMChan ReactorInput) (Handler a)
+type HandlerMonad a = Reader (TQueue ReactorInput) (Handler a)
 
 sendToReactor :: (a -> ReactorInput) -> HandlerMonad a
-sendToReactor f = do
-  ch <- Reader.ask
-  return (atomically . writeTMChan ch . f)
+sendToReactor f = (\ch -> atomically . writeTQueue ch . f) <$> Reader.ask
 
 -- InitializeCallbacks
 onInitialConfiguration :: InitializeRequest -> Either Text Config
@@ -176,17 +181,18 @@ onInitialConfiguration _ = Right Config
 onConfigurationChange :: DidChangeConfigurationNotification -> Either Text Config
 onConfigurationChange _ = Right Config
 
-onStartup :: TMChan ReactorInput -> LspFuncs Config -> IO (Maybe ResponseError)
+onStartup :: TQueue ReactorInput -> LspFuncs Config -> IO (Maybe ResponseError)
 onStartup ch funcs = do
-  _ <- forkIO $ reactor funcs ch
+  updateSimulator <- hostSimulatorUpdate 8000
+  _ <- forkIO $ reactor funcs ch updateSimulator
   return Nothing
 
 -- Handlers
-hoverHandler                                 :: HandlerMonad HoverRequest
-hoverHandler                                 = sendToReactor ShowHover
+hoverHandler                             :: HandlerMonad HoverRequest
+hoverHandler                             = sendToReactor ShowHover
 
-completionHandler                            :: HandlerMonad CompletionRequest
-completionHandler                            = sendToReactor ShowCompletion
+completionHandler                        :: HandlerMonad CompletionRequest
+completionHandler                        = sendToReactor ShowCompletion
 
 reloadErrorsHandler :: (Lens.HasParams n p, Lens.HasTextDocument p d, Lens.HasUri d Uri) => HandlerMonad n
 reloadErrorsHandler =
@@ -195,24 +201,33 @@ reloadErrorsHandler =
     . view (Lens.params . Lens.textDocument . Lens.uri)
     )
 
-didOpenTextDocumentNotificationHandler       :: HandlerMonad DidOpenTextDocumentNotification
-didOpenTextDocumentNotificationHandler       = reloadErrorsHandler
+didOpenTextDocumentNotificationHandler   :: HandlerMonad DidOpenTextDocumentNotification
+didOpenTextDocumentNotificationHandler   = reloadErrorsHandler
 
-didChangeTextDocumentNotificationHandler     :: HandlerMonad DidChangeTextDocumentNotification
-didChangeTextDocumentNotificationHandler     = reloadErrorsHandler
+didChangeTextDocumentNotificationHandler :: HandlerMonad DidChangeTextDocumentNotification
+didChangeTextDocumentNotificationHandler = reloadErrorsHandler
 
-didSaveTextDocumentNotificationHandler       :: HandlerMonad DidSaveTextDocumentNotification
-didSaveTextDocumentNotificationHandler       = reloadErrorsHandler
+didCloseTextDocumentNotificationHandler  :: HandlerMonad DidCloseTextDocumentNotification
+didCloseTextDocumentNotificationHandler  = sendToReactor (const CloseDocument)
+
+didSaveTextDocumentNotificationHandler   :: HandlerMonad DidSaveTextDocumentNotification
+didSaveTextDocumentNotificationHandler   = reloadErrorsHandler
 
 -- Options
-textDocumentSync                 :: TextDocumentSyncOptions
-textDocumentSync                 = TextDocumentSyncOptions (Just True) (Just TdSyncIncremental) (Just False) (Just False) (Just (SaveOptions (Just False)))
+textDocumentSync :: TextDocumentSyncOptions
+textDocumentSync =
+  TextDocumentSyncOptions
+    (Just True)
+    (Just TdSyncIncremental)
+    (Just False)
+    (Just False)
+    (Just (SaveOptions (Just False)))
 
 
 -- Main
 main :: IO ()
 main = do
-  ch <- atomically newTMChan
+  ch <- atomically newTQueue
   _ <- runWithHandles
     stdin
     stdout
@@ -222,11 +237,12 @@ main = do
       , onStartup              = Main.onStartup ch
       }
     def
-      { LSP.hoverHandler                                 = Just . runReader Main.hoverHandler $ ch
-      , LSP.completionHandler                            = Just . runReader Main.completionHandler $ ch
-      , LSP.didOpenTextDocumentNotificationHandler       = Just . runReader Main.didOpenTextDocumentNotificationHandler $ ch
-      , LSP.didChangeTextDocumentNotificationHandler     = Just . runReader Main.didChangeTextDocumentNotificationHandler $ ch
-      , LSP.didSaveTextDocumentNotificationHandler       = Just . runReader Main.didSaveTextDocumentNotificationHandler $ ch
+      { LSP.hoverHandler                             = Just . runReader Main.hoverHandler $ ch
+      , LSP.completionHandler                        = Just . runReader Main.completionHandler $ ch
+      , LSP.didOpenTextDocumentNotificationHandler   = Just . runReader Main.didOpenTextDocumentNotificationHandler $ ch
+      , LSP.didChangeTextDocumentNotificationHandler = Just . runReader Main.didChangeTextDocumentNotificationHandler $ ch
+      , LSP.didCloseTextDocumentNotificationHandler  = Just . runReader Main.didCloseTextDocumentNotificationHandler $ ch
+      , LSP.didSaveTextDocumentNotificationHandler   = Just . runReader Main.didSaveTextDocumentNotificationHandler $ ch
       }
     def
       { LSP.textDocumentSync = Just Main.textDocumentSync
