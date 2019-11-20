@@ -6,9 +6,6 @@ author:              "Jonathan Tanner"
 maintainer:          "jonathan.tanner@sjc.ox.ac.uk"
 copyright:           "2019 Jonathan Tanner"
 
-extra-source-files:
-  - ../README.md
-
 # Metadata used when publishing your package
 # synopsis:            Easy to use toolchain for building simple processors
 # category:            Hardware, Compiler

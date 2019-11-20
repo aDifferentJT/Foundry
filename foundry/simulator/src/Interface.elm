@@ -2,7 +2,7 @@ module Interface exposing (InspectibleMem, Interface, Sim, TickRes, interface)
 
 import Array exposing (Array)
 import Array.Extra
-import Basics.Extra exposing (flip)
+import Basics.Extra exposing (flip, uncurry)
 import Bitwise
 import Browser exposing (Document, document)
 import Browser.Dom
@@ -45,15 +45,77 @@ padToLen n p xs =
                 y :: padToLen (n - 1) p ys
 
 
+showHexNibble : Int -> Char
+showHexNibble n =
+    withDefault '0'
+        << List.Extra.getAt n
+        << String.toList
+    <|
+        "0123456789abcdef"
+
+
+showHexNibbles : List Char -> Int -> Int -> List Char
+showHexNibbles cs w n =
+    if w <= 0 && n == 0 then
+        []
+
+    else
+        let
+            lsn =
+                Bitwise.and 0x0F n
+        in
+        let
+            rest =
+                Bitwise.shiftRightZfBy 4 n
+        in
+        showHexNibbles (showHexNibble lsn :: cs) (w - 4) rest
+
+
+showHex : Int -> Int -> String
+showHex w =
+    String.fromList
+        << showHexNibbles [] w
+
+
+readHexNibble : Char -> Maybe Int
+readHexNibble c =
+    List.Extra.elemIndex c
+        << String.toList
+    <|
+        "0123456789abcdef"
+
+
+readHexNibbles : List Char -> Int -> Maybe Int
+readHexNibbles cs_ n =
+    case cs_ of
+        [] ->
+            Just n
+
+        c :: cs ->
+            Maybe.andThen
+                (readHexNibbles cs)
+                (Maybe.map
+                    (Bitwise.or (Bitwise.shiftLeftBy 4 n))
+                    (readHexNibble c)
+                )
+
+
+readHex : String -> Maybe Int
+readHex s =
+    readHexNibbles (String.toList s) 0
+
+
 type alias InspectibleMem simState =
     { name : String
     , contents :
         List
             { value : String
             , set : String -> Maybe simState
+            , getHex : ( Int, Int )
             , selected : Bool
             }
     , setAll : List String -> simState
+    , setAllHex : List Int -> simState
     }
 
 
@@ -87,6 +149,11 @@ type alias Model simState =
     }
 
 
+type MemoryFileFormat
+    = HumanReadable
+    | Hexadecimal
+
+
 type Msg simState
     = ManyMsgs (List (Msg simState))
     | TwoMsgs (Msg simState) (Msg simState)
@@ -98,10 +165,10 @@ type Msg simState
     | StartEditingMem Int Int String
     | StopEditingMem Int Int
     | DidResize Int Int
-    | DownloadMem (InspectibleMem simState)
-    | OfferUploadMem (InspectibleMem simState)
-    | PerformUploadMem (InspectibleMem simState) File
-    | CompleteUploadMem (InspectibleMem simState) String
+    | DownloadMem MemoryFileFormat (InspectibleMem simState)
+    | OfferUploadMem MemoryFileFormat (InspectibleMem simState)
+    | PerformUploadMem MemoryFileFormat (InspectibleMem simState) File
+    | CompleteUploadMem MemoryFileFormat (InspectibleMem simState) String
 
 
 type alias Interface simState =
@@ -229,35 +296,48 @@ update sim msg model =
             , Cmd.none
             )
 
-        DownloadMem mem ->
+        DownloadMem format mem ->
             ( model
             , File.Download.string
                 (mem.name ++ ".txt")
                 "text/plain"
                 (String.join "\n"
-                    << List.map .value
+                    << List.map
+                        (case format of
+                            HumanReadable ->
+                                .value
+
+                            Hexadecimal ->
+                                uncurry showHex << .getHex
+                        )
                  <|
                     mem.contents
                 )
             )
 
-        OfferUploadMem mem ->
+        OfferUploadMem format mem ->
             ( model
-            , File.Select.file [ "text/plain" ] (PerformUploadMem mem)
+            , File.Select.file [ "text/plain" ] (PerformUploadMem format mem)
             )
 
-        PerformUploadMem mem file ->
+        PerformUploadMem format mem file ->
             ( model
-            , Task.perform (CompleteUploadMem mem)
+            , Task.perform (CompleteUploadMem format mem)
                 << File.toString
               <|
                 file
             )
 
-        CompleteUploadMem mem string ->
+        CompleteUploadMem format mem string ->
             ( { model
                 | simState =
-                    mem.setAll
+                    (case format of
+                        HumanReadable ->
+                            mem.setAll
+
+                        Hexadecimal ->
+                            mem.setAllHex << List.map (withDefault 0 << readHex)
+                    )
                         << padToLen (List.length mem.contents) ""
                         << String.split "\n"
                     <|
@@ -433,14 +513,31 @@ memTable sim model =
                             [ Element.Input.button
                                 [ Element.alignLeft
                                 ]
-                                { onPress = Just (DownloadMem mem)
-                                , label = Element.text "Download"
+                                { onPress = Just (DownloadMem HumanReadable mem)
+                                , label = Element.text "Download text"
                                 }
                             , Element.Input.button
                                 [ Element.alignRight
                                 ]
-                                { onPress = Just (OfferUploadMem mem)
-                                , label = Element.text "Upload"
+                                { onPress = Just (OfferUploadMem HumanReadable mem)
+                                , label = Element.text "Upload text"
+                                }
+                            ]
+                        , Element.row
+                            [ Element.width Element.fill
+                            , Element.paddingXY 20 0
+                            ]
+                            [ Element.Input.button
+                                [ Element.alignLeft
+                                ]
+                                { onPress = Just (DownloadMem Hexadecimal mem)
+                                , label = Element.text "Download hex"
+                                }
+                            , Element.Input.button
+                                [ Element.alignRight
+                                ]
+                                { onPress = Just (OfferUploadMem Hexadecimal mem)
+                                , label = Element.text "Upload hex"
                                 }
                             ]
                         , Element.indexedTable

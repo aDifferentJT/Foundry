@@ -416,6 +416,19 @@ genGetInspectibleMems Proc{..} = ElmStmts
                     "<|"
                     (ElmMember "simState" i)
                   )
+                , ( "getHex"
+                  , ElmTupleExpr
+                    [ ElmExprInt dw
+                    , ElmBinOp
+                      ( ElmBinOp
+                        (ElmFuncAppl (ElmMember (ElmMember "Maybe" "Extra") "unwrap") [0, "toInt"])
+                        "<<"
+                        (ElmFuncAppl (ElmMember "Array" "get") ["n"])
+                      )
+                      "<|"
+                      (ElmMember "simState" i)
+                    ]
+                  )
                 , ( "set"
                   , ElmBinOp
                     ( ElmFuncAppl (ElmMember "Maybe" "map")
@@ -469,8 +482,10 @@ genGetInspectibleMems Proc{..} = ElmStmts
             $ [ ( i
                 , ElmBinOp
                   ( ElmBinOp
+                    (ElmMember "Array" "fromList")
+                    "<<"
                     ( ElmFuncAppl
-                      (ElmMember "Array" "indexedMap")
+                      (ElmMember "List" "indexedMap")
                       [ ElmLambda ["n"]
                         ( ElmBinOp
                           ( ElmFuncAppl
@@ -504,8 +519,21 @@ genGetInspectibleMems Proc{..} = ElmStmts
                         )
                       ]
                     )
-                    "<<"
+                  )
+                  "<|"
+                  "xs"
+                )
+              ]
+          )
+        , ( "setAllHex"
+          , ElmLambda ["xs"]
+            . ElmRecordUpdate "simState"
+            $ [ ( i
+                , ElmBinOp
+                  ( ElmBinOp
                     (ElmMember "Array" "fromList")
+                    "<<"
+                    (ElmFuncAppl (ElmMember "List" "map") [ElmExprIdent $ "int" ++ tshow dw])
                   )
                   "<|"
                   "xs"

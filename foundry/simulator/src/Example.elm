@@ -367,6 +367,7 @@ getInspectibleMems simState =
                             << Array.get n
                         <|
                             simState.progMem
+                    , getHex = ( 8, Maybe.Extra.unwrap 0 toInt << Array.get n <| simState.progMem )
                     , set =
                         Maybe.map
                             (\i ->
@@ -383,19 +384,24 @@ getInspectibleMems simState =
             \xs ->
                 { simState
                     | progMem =
-                        Array.indexedMap
-                            (\n ->
-                                Maybe.Extra.unwrap
-                                    (withDefault
-                                        (int8 0)
-                                        (Array.get n simState.progMem)
-                                    )
-                                    encodeInst
-                                    << readInst
-                            )
-                            << Array.fromList
+                        Array.fromList
+                            << List.indexedMap
+                                (\n ->
+                                    Maybe.Extra.unwrap
+                                        (withDefault
+                                            (int8 0)
+                                            (Array.get n simState.progMem)
+                                        )
+                                        encodeInst
+                                        << readInst
+                                )
                         <|
                             xs
+                }
+      , setAllHex =
+            \xs ->
+                { simState
+                    | progMem = Array.fromList << List.map int8 <| xs
                 }
       }
     , { name = "dataMem"
@@ -407,6 +413,7 @@ getInspectibleMems simState =
                             << Array.get n
                         <|
                             simState.dataMem
+                    , getHex = ( 4, Maybe.Extra.unwrap 0 toInt << Array.get n <| simState.dataMem )
                     , set =
                         Maybe.map
                             (\x ->
@@ -423,19 +430,24 @@ getInspectibleMems simState =
             \xs ->
                 { simState
                     | dataMem =
-                        Array.indexedMap
-                            (\n ->
-                                Maybe.Extra.unwrap
-                                    (withDefault
-                                        (int4 0)
-                                        (Array.get n simState.dataMem)
-                                    )
-                                    int4
-                                    << String.toInt
-                            )
-                            << Array.fromList
+                        Array.fromList
+                            << List.indexedMap
+                                (\n ->
+                                    Maybe.Extra.unwrap
+                                        (withDefault
+                                            (int4 0)
+                                            (Array.get n simState.dataMem)
+                                        )
+                                        int4
+                                        << String.toInt
+                                )
                         <|
                             xs
+                }
+      , setAllHex =
+            \xs ->
+                { simState
+                    | dataMem = Array.fromList << List.map int4 <| xs
                 }
       }
     ]
