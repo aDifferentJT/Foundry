@@ -14,7 +14,8 @@ jobs:
       with:
         path: $HOME/.stack
         key: home_stack
-    - uses: mstksg/setup-stack@v1
+    - name: Install libusb-dev
+      run: sudo apt install libusb-1.0-0-dev
     - name: Run tests
       run: stack test
     - name: Install executable
