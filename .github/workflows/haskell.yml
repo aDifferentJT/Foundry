@@ -9,6 +9,11 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
+    - name: Cache Stack
+      uses: actions/cache@v1
+      with:
+        path: $HOME/.stack
+        key: home_stack
     - uses: mstksg/setup-stack@v1
     - name: Run tests
       run: stack test
