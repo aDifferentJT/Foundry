@@ -22,6 +22,8 @@ jobs:
       run: sudo apt install libusb-1.0-0-dev
     - name: Run tests
       run: stack test
+    - name: Add to path
+      run: export PATH=$HOME/.local/bin:$PATH
     - name: Install executable
       run: stack install
 
