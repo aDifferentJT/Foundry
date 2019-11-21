@@ -12,7 +12,7 @@ jobs:
     - name: Cache Stack
       uses: actions/cache@v1
       with:
-        path: $HOME/.stack
+        path: ${{ env["HOME"] }}/.stack
         key: home_stack
     - name: Install libusb-dev
       run: sudo apt install libusb-1.0-0-dev
