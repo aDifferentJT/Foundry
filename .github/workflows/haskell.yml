@@ -9,6 +9,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
-    - uses: actions/setup-haskell@v1
+    - uses: mstksg/setup-stack@v1
     - name: Run tests
       run: stack test
