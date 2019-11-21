@@ -9,6 +9,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
+    - name: Create .stack
+      run: mkdir $GITHUB_WORKSPACE/.stack
     - name: Cache Stack
       uses: actions/cache@v1
       with:
