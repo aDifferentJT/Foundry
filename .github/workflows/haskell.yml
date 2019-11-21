@@ -12,3 +12,6 @@ jobs:
     - uses: mstksg/setup-stack@v1
     - name: Run tests
       run: stack test
+    - name: Install executable
+      run: stack install
+
