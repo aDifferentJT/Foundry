@@ -12,8 +12,10 @@ jobs:
     - name: Cache Stack
       uses: actions/cache@v1
       with:
-        path: ${{ env["HOME"] }}/.stack
+        path: ${{ env.GITHUB_WORKSPACE }}/.stack
         key: home_stack
+    - name: Symbolic link to .stack
+      run: ln -s ${{ env.GITHUB_WORKSPACE }}/.stack ${{ env.HOME }}/.stack
     - name: Install libusb-dev
       run: sudo apt install libusb-1.0-0-dev
     - name: Run tests
