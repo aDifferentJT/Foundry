@@ -10,14 +10,14 @@ jobs:
     steps:
     - uses: actions/checkout@v1
     - name: Create .stack
-      run: mkdir .stack
+      run: mkdir $GITHUB_WORKSPACE/.stack
     - name: Cache Stack
       uses: actions/cache@v1
       with:
         path: .stack
         key: home_stack
     - name: Symbolic link to .stack
-      run: ln -s .stack $HOME/.stack
+      run: ln -s $GITHUB_WORKSPACE/.stack $HOME/.stack
     - name: Install libusb-dev
       run: sudo apt install libusb-1.0-0-dev
     - name: Run tests
