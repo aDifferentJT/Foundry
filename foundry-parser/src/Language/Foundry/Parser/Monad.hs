@@ -538,4 +538,4 @@ printErrors s = mapLeft (intercalate "\n" . map printError)
 
 -- | Run the given parser on the given input string and either return a nicely formatted error or the output of the parser
 runParser :: ParserMonad a -> Text -> Either Text a
-runParser m s = printErrors s $ runParser' m s
+runParser m s = printErrors s (runParser' m s)

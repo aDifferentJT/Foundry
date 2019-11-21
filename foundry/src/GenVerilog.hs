@@ -398,8 +398,8 @@ genMemoryModule memoryFiles (Memory name dataWidth addressWidth) =
       ]
     , V.Assign "out_data" "data_out_reg"
     ] ++
-    ( fromMaybe []
-    . fmap
+    ( maybe
+      []
       (\file ->
         [ V.RawVerilog . intercalate "\n" $
           [ "  initial begin"

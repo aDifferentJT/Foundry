@@ -25,10 +25,21 @@ library:
   dependencies:
     - classy-prelude
     - mtl
+    - nonnull-extra
 
 tests:
   HLint-test:
     main:                test/HLint.hs
     dependencies:
       - hlint
+  Errors-test:
+    main:                test/Errors.hs
+    dependencies:
+      - classy-prelude
+      - errors
+      - mtl
+      - quickcheck-instances
+      - tasty
+      - tasty-laws
+      - tasty-quickcheck
 

@@ -1,4 +1,4 @@
-name:                maps
+name:                tasty-laws
 version:             0.1.0.0
 github:              "nixCodeX/Foundry"
 license:             GPL-3
@@ -21,39 +21,23 @@ dependencies:
 library:
   source-dirs: src
   exposed-modules:
-    - Maps.Either
-    - Maps.List
-    - Maps.Text
+    - Test.Tasty.Laws
   dependencies:
     - classy-prelude
-    - text
+    - tasty
+    - tasty-quickcheck
 
 tests:
   HLint-test:
     main:                test/HLint.hs
     dependencies:
       - hlint
-  Either-test:
-    main:                test/Either.hs
+  Laws-test:
+    main:                test/Laws.hs
     dependencies:
       - classy-prelude
-      - maps
-      - tasty
-      - tasty-quickcheck
-  List-test:
-    main:                test/List.hs
-    dependencies:
-      - classy-prelude
-      - maps
-      - tasty
-      - tasty-quickcheck
-  Text-test:
-    main:                test/Text.hs
-    dependencies:
-      - classy-prelude
-      - maps
       - quickcheck-instances
       - tasty
+      - tasty-laws
       - tasty-quickcheck
-      - text
 

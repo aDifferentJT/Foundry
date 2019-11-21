@@ -354,11 +354,11 @@ parseError = flip throwLocalError' "Parse Error"
 
 -- | Parse the given string and return either an error together with a range or a `Proc'
 parse' :: Text -> Either [(Text, Maybe (AlexPosn, AlexPosn))] Proc
-parse' = runParser' . unrecover $ parseM >>= \x -> throwUnimpl >> (return . typeCheck $ x)
+parse' = runParser' $ parseM >>= \x -> throwUnimpl >> (return . typeCheck $ x)
 
 -- | Parse the given string and return either a nicely formatted error or a `Proc'
 parse :: Text -> Either Text Proc
-parse = runParser . unrecover $ parseM >>= \x -> throwUnimpl >> (return . typeCheck $ x)
+parse = runParser $ parseM >>= \x -> throwUnimpl >> (return . typeCheck $ x)
 
 -- | Parse the given file and return either a nicely formatted error or a `Proc'
 parseFile :: FilePath -> ExceptT Text IO Proc

@@ -31,4 +31,15 @@ tests:
     main:                test/HLint.hs
     dependencies:
       - hlint
+  Bit-test:
+    main:                test/Bit.hs
+    dependencies:
+      - QuickCheck
+      - bit-list
+      - classy-prelude
+      - quickcheck-instances
+      - smallcheck
+      - tasty
+      - tasty-quickcheck
+      - tasty-smallcheck
 

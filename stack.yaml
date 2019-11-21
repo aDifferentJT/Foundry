@@ -37,9 +37,11 @@ packages:
 - group
 - iceburn
 - maps
+- nonnull-extra
 - simple-c-ast
 - simple-elm-ast
 - simple-verilog-ast
+- tasty-laws
 - word-encoder
 # Dependency packages to be pulled from upstream that are not in the resolver.
 # These entries can reference officially published versions as well as

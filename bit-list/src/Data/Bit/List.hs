@@ -29,8 +29,8 @@ data Endianness
 -- | Turn some bits into a number
 bitsToInt :: Endianness -> [Bit] -> Int
 bitsToInt e = case e of
-  Little -> foldl (flip f) 0
-  Big    -> foldr f 0
+  Little -> foldr f 0
+  Big    -> foldl (flip f) 0
   where f :: Bit -> Int -> Int
         f b = (fromEnum b .|.) . flip shiftL 1
 
@@ -39,6 +39,9 @@ intToBits :: Endianness -> Int -> [Bit]
 intToBits Little = unfoldr f
   where f :: Int -> Maybe (Bit, Int)
         f 0 = Nothing
-        f x = Just (toEnum (x .&. 1), shiftR x 1)
-intToBits Big    = reverse . intToBits Little
+        f n = Just (toEnum (n .&. 1), shiftR n 1)
+intToBits Big    = intToBits' []
+  where intToBits' :: [Bit] -> Int -> [Bit]
+        intToBits' bs 0 = bs
+        intToBits' bs n = intToBits' (toEnum (n .&. 1) : bs) (shiftR n 1)
 

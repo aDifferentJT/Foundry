@@ -31,4 +31,12 @@ tests:
     main:                test/HLint.hs
     dependencies:
       - hlint
+  Group-test:
+    main:                test/Group.hs
+    dependencies:
+      - classy-prelude
+      - containers
+      - group
+      - tasty
+      - tasty-quickcheck
 

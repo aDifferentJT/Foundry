@@ -1,4 +1,4 @@
-name:                maps
+name:                nonnull-extra
 version:             0.1.0.0
 github:              "nixCodeX/Foundry"
 license:             GPL-3
@@ -21,39 +21,20 @@ dependencies:
 library:
   source-dirs: src
   exposed-modules:
-    - Maps.Either
-    - Maps.List
-    - Maps.Text
+    - Data.NonNull.Append
   dependencies:
     - classy-prelude
-    - text
 
 tests:
   HLint-test:
     main:                test/HLint.hs
     dependencies:
       - hlint
-  Either-test:
-    main:                test/Either.hs
+  NonNull-Append-test:
+    main:                test/NonNullAppend.hs
     dependencies:
       - classy-prelude
-      - maps
+      - nonnull-extra
       - tasty
       - tasty-quickcheck
-  List-test:
-    main:                test/List.hs
-    dependencies:
-      - classy-prelude
-      - maps
-      - tasty
-      - tasty-quickcheck
-  Text-test:
-    main:                test/Text.hs
-    dependencies:
-      - classy-prelude
-      - maps
-      - quickcheck-instances
-      - tasty
-      - tasty-quickcheck
-      - text
 

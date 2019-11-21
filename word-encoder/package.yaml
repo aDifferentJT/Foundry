@@ -31,4 +31,12 @@ tests:
     main:                test/HLint.hs
     dependencies:
       - hlint
+  WordEncode-test:
+    main:                test/WordEncode.hs
+    dependencies:
+      - word-encoder
+      - classy-prelude
+      - quickcheck-instances
+      - tasty
+      - tasty-quickcheck
 
