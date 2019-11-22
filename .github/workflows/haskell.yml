@@ -11,7 +11,7 @@ jobs:
     - uses: actions/checkout@v1
     - name: Create .stack
       run: mkdir $GITHUB_WORKSPACE/.stack
-    - name: Cache Stack
+    - name: Cache .stack
       uses: actions/cache@v1
       with:
         path: .stack
@@ -26,4 +26,8 @@ jobs:
       run: export PATH=$HOME/.local/bin:$PATH
     - name: Install executable
       run: stack install
+    - name: Show size of .stack dir
+      run: du -sh $GITHUB_WORKSPACE/.stack
+    - name: Show size of .stack subdirs
+      run: du -sh $GITHUB_WORKSPACE/.stack/*
 
