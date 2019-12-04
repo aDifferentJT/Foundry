@@ -78,6 +78,10 @@ bitListProperties :: TestTree
 bitListProperties = testGroup "BitList"
   [ QC.testProperty "bitsToInt e . intToBits e == id" $ \e n ->
     (bitsToInt e . intToBits e . QC.getNonNegative $ n) == QC.getNonNegative n
+  , QC.testProperty "bitsToInt Little . reverse . intToBits Big == id" $ \n ->
+    (bitsToInt Little . reverse . intToBits Big . QC.getNonNegative $ n) == QC.getNonNegative n
+  , QC.testProperty "bitsToInt Big . reverse . intToBits Little == id" $ \n ->
+    (bitsToInt Big . reverse . intToBits Little . QC.getNonNegative $ n) == QC.getNonNegative n
   , QC.testProperty "intToBits Big . bitsToInt Big == dropWhile (== Zero)" $
     (\bs ->
       (intToBits Big . bitsToInt Big $ bs) == dropWhile (== Zero) bs

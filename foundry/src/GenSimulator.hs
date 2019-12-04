@@ -31,8 +31,8 @@ import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text.IO (hPutStrLn)
 import qualified Snap.Core as Snap
 import qualified Snap.Http.Server as Snap
-import System.Directory (copyFile, createDirectory, getCurrentDirectory)
-import System.FilePath ((</>), takeBaseName)
+import System.Directory (copyFile, createDirectory, createDirectoryIfMissing, getCurrentDirectory)
+import System.FilePath ((</>), takeBaseName, takeDirectory)
 import System.IO (Handle)
 import System.Process (CreateProcess(cwd), createProcess, proc, waitForProcess)
 
@@ -80,7 +80,7 @@ elmExpr Proc{..} _ (MemAccessExpr _ i e) =
         ]
     ]
 elmExpr Proc{..} w (ConstExpr n)         = ElmFuncAppl (ElmExprIdent $ "int" ++ tshow w) [ElmExprInt n]
-elmExpr Proc{..} _ (BinaryConstExpr bs)  = ElmFuncAppl (ElmExprIdent $ "int" ++ (tshow . length $ bs)) [ElmExprInt . bitsToInt Little $ bs]
+elmExpr Proc{..} _ (BinaryConstExpr bs)  = ElmFuncAppl (ElmExprIdent $ "int" ++ (tshow . length $ bs)) [ElmExprInt . bitsToInt Big $ bs]
 elmExpr Proc{..} w (OpExpr _ o e1 e2)    = ElmFuncAppl (elmOp o (fromMaybe 0 . widthOfExpr $ e1)) [elmExpr Proc{..} w e1, elmExpr Proc{..} w e2]
 elmExpr Proc{..} w (TernaryExpr _ c t f) = ElmTernOp (elmBoolExpr Proc{..} c) (elmExpr Proc{..} w t) (elmExpr Proc{..} w f)
 
@@ -269,7 +269,7 @@ genDecodeInst Proc{..} = ElmStmts
           "Inst"
         )
   , ElmDef (ElmPatFuncAppl "decodeInst" ["x"])
-    . ElmCaseExpr (ElmFuncAppl "intToBits" ["x"])
+    . ElmCaseExpr (ElmFuncAppl "intToBits" ["Little", "x"])
     $ [ ( ElmListPat . genBitsPat . ConcatBitsExpr (length bs + sizeOfEnc enc) (ConstBitsExpr bs) $ enc
         , ElmFuncAppl (ElmExprIdent . textHeadToUpper $ i) (zipWith genArg ts as)
         )
@@ -283,7 +283,7 @@ genDecodeInst Proc{..} = ElmStmts
         genArg :: Type -> Text -> ElmExpr
         genArg (RegT _)  _ = ElmStringExpr ""
         genArg (BitsT _) _ = ElmTupleExpr []
-        genArg (IntT w)  i = ElmFuncAppl "bitsToInt" [ElmListExpr . map (ElmExprIdent . (i ++) . tshow) $ [1..w]]
+        genArg (IntT w)  i = ElmFuncAppl "bitsToInt" ["Little", ElmListExpr . map (ElmExprIdent . (i ++) . tshow) $ [1..w]]
         genArg  InstT    _ = ElmTupleExpr []
 
 genEncodeInst :: Proc -> ElmStmt
@@ -315,7 +315,7 @@ genEncodeInst Proc{..} = ElmStmts
       ]
   ]
   where encode :: [Type] -> [Text] -> BitsExpr -> ElmExpr
-        encode _  _  (ConstBitsExpr bs) = ElmFuncAppl (ElmExprIdent . ("int" ++) . tshow . length $ bs) [ElmExprInt . bitsToInt Big $ bs]
+        encode _  _  (ConstBitsExpr bs) = ElmFuncAppl "bitsToInt" ["Little", ElmListExpr . map (\case Zero -> "False"; One -> "True") $ bs]
         encode ts as (EncBitsExpr _ i) =
           case headMay . mapMaybe (\(n, (t, a)) -> if a == i then Just (n, t) else Nothing) . zip [1 :: Int ..] $ zip ts as of
             Just (_, RegT _)  -> error "Reg argument not supported"
@@ -325,7 +325,7 @@ genEncodeInst Proc{..} = ElmStmts
             Nothing           -> error "Argument not found"
         encode ts as (ConcatBitsExpr _ e1 (ConstBitsExpr [])) = encode ts as e1
         encode ts as (ConcatBitsExpr _ (ConstBitsExpr []) e2) = encode ts as e2
-        encode ts as (ConcatBitsExpr _ e1 e2) = ElmFuncAppl (ElmExprIdent $ "concatBits" ++ (tshow . sizeOfEnc $ e2)) (map (encode ts as) [e2, e1])
+        encode ts as (ConcatBitsExpr _ e1 e2) = ElmFuncAppl (ElmExprIdent $ "concatBits" ++ (tshow . sizeOfEnc $ e1)) (map (encode ts as) [e1, e2])
 
 genTick :: Proc -> ElmStmt
 genTick Proc{..} = ElmStmts
@@ -365,10 +365,10 @@ genGetLeds Proc{..} = ElmStmts
   where ledsFrom :: Int -> [LedImpl] -> ElmExpr
         ledsFrom _ [] = ElmFuncAppl "int0" [0]
         ledsFrom n' ls@[LedImpl m n e]
-          | n' == n   = ElmFuncAppl "intToBits" [elmExpr Proc{..} (m - n + 1) e]
+          | n' == n   = ElmFuncAppl "intToBits" ["Little", elmExpr Proc{..} (m - n + 1) e]
           | otherwise = ElmBinOp (ElmFuncAppl (ElmMember "List" "repeat") [ElmExprInt (n - n'), "False"]) "++" (ledsFrom n ls)
         ledsFrom n' ls@(LedImpl m n e : ls')
-          | n' == n   = ElmBinOp (ElmFuncAppl "intToBits" [elmExpr Proc{..} (m - n + 1) e]) "++" (ledsFrom (m + 1) ls')
+          | n' == n   = ElmBinOp (ElmFuncAppl "intToBits" ["Little", elmExpr Proc{..} (m - n + 1) e]) "++" (ledsFrom (m + 1) ls')
           | otherwise = ElmBinOp (ElmFuncAppl (ElmMember "List" "repeat") [ElmExprInt (n - n'), "False"]) "++" (ledsFrom n ls)
 
 genGetInspectibleMems :: Proc -> ElmStmt
@@ -635,15 +635,22 @@ genElm = ElmStmts . intersperse (ElmStmts . replicate 2 $ ElmBlankLine) . flap
 writeElm :: Handle -> Proc -> IO ()
 writeElm h = hPutStrLn h . pretty . genElm
 
+copyFileMakingParents :: FilePath -> FilePath -> IO ()
+copyFileMakingParents dest src = do
+  createDirectoryIfMissing True (takeDirectory dest)
+  copyFile src dest
+
 genSimulator :: FilePath -> Proc -> IO ()
 genSimulator fn ast =
   withSystemTempDirectory (takeBaseName fn) $ \dir -> do
     jsonSrc <- getDataFileName "simulator/elm.json"
     copyFile jsonSrc (dir </> "elm.json")
     createDirectory (dir </> "src")
-    mapM_ (\f -> getDataFileName ("simulator/src/" ++ f) >>= flip copyFile (dir </> "src" </> f))
-      [ "Interface.elm"
+    mapM_ (\f -> getDataFileName ("simulator/src/" ++ f) >>= copyFileMakingParents (dir </> "src" </> f))
+      [ "Hex.elm"
+      , "Interface.elm"
       , "IntWidths.elm"
+      , "List/Pad.elm"
       , "Style.elm"
       ]
     withFile (dir </> "src/Main.elm") WriteMode $ \h ->

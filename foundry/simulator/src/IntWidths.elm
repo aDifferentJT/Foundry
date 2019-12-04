@@ -1,5 +1,6 @@
 module IntWidths exposing
-    ( IntW
+    ( Endianness(..)
+    , IntW
     , Num0
     , Num1
     , Num2
@@ -33,7 +34,9 @@ module IntWidths exposing
     , toInt
     )
 
+import Basics.Extra exposing (flip)
 import Bitwise exposing (shiftLeftBy, shiftRightBy)
+import List.Extra
 import Maybe exposing (withDefault)
 
 
@@ -118,54 +121,59 @@ binOpW f (IntW w x) (IntW _ y) =
     IntW w (modBy (2 ^ w) (f x y))
 
 
+intW : Int -> Int -> IntW a
+intW w =
+    IntW w << modBy (2 ^ w)
+
+
 int0 : Int -> IntW Num0
 int0 =
-    IntW 0
+    intW 0
 
 
 int1 : Int -> IntW Num1
 int1 =
-    IntW 1
+    intW 1
 
 
 int2 : Int -> IntW Num2
 int2 =
-    IntW 2
+    intW 2
 
 
 int3 : Int -> IntW Num3
 int3 =
-    IntW 3
+    intW 3
 
 
 int4 : Int -> IntW Num4
 int4 =
-    IntW 4
+    intW 4
 
 
 int5 : Int -> IntW Num5
 int5 =
-    IntW 5
+    intW 5
 
 
 int6 : Int -> IntW Num6
 int6 =
-    IntW 6
+    intW 6
 
 
 int7 : Int -> IntW Num7
 int7 =
-    IntW 7
+    intW 7
 
 
 int8 : Int -> IntW Num8
 int8 =
-    IntW 8
+    intW 8
 
 
 concatBits : IntW a -> IntW b -> IntW c
 concatBits (IntW w1 x) (IntW w2 y) =
-    IntW (w1 + w2) (Bitwise.or (shiftLeftBy w2 x) y)
+    IntW (w1 + w2) (Bitwise.or x (shiftLeftBy w1 y))
 
 
 concatBits0 : IntW Num0 -> IntW a -> IntW a
@@ -213,36 +221,70 @@ concatBits8 =
     concatBits
 
 
-intToBits : IntW a -> List Bool
-intToBits (IntW w x) =
+type Endianness
+    = Little
+    | Big
+
+
+intToBits : Endianness -> IntW a -> List Bool
+intToBits endianness =
+    case endianness of
+        Little ->
+            intToBitsLittle
+
+        Big ->
+            intToBitsBig []
+
+
+intToBitsLittle : IntW a -> List Bool
+intToBitsLittle =
+    List.Extra.unfoldr
+        (\(IntW w x) ->
+            if w == 0 then
+                Nothing
+
+            else
+                Just
+                    ( Bitwise.and 1 x == 1
+                    , IntW (w - 1) (shiftRightBy 1 x)
+                    )
+        )
+
+
+intToBitsBig : List Bool -> IntW a -> List Bool
+intToBitsBig bs (IntW w x) =
     if w == 0 then
-        []
+        bs
 
     else
-        (Bitwise.and 1 x == 1) :: intToBits (IntW (w - 1) (shiftRightBy 1 x))
+        intToBitsBig ((Bitwise.and 1 x == 1) :: bs) (IntW (w - 1) (shiftRightBy 1 x))
 
 
-bitsToInt : List Bool -> IntW a
-bitsToInt xs =
-    case xs of
-        [] ->
-            IntW 0 0
+bitsToIntF : Bool -> IntW a -> IntW a
+bitsToIntF b (IntW w x) =
+    IntW (w + 1)
+        (Bitwise.or
+            (if b then
+                1
 
-        y :: ys ->
-            let
-                (IntW w x) =
-                    bitsToInt ys
-            in
-            IntW (w + 1)
-                (Bitwise.or
-                    (if y then
-                        1
+             else
+                0
+            )
+            (shiftLeftBy 1 x)
+        )
 
-                     else
-                        0
-                    )
-                    (shiftLeftBy 1 x)
-                )
+
+bitsToInt : Endianness -> List Bool -> IntW a
+bitsToInt endianness =
+    (case endianness of
+        Little ->
+            List.foldr
+
+        Big ->
+            List.foldl
+    )
+        bitsToIntF
+        (IntW 0 0)
 
 
 toInt : IntW a -> Int

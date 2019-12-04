@@ -1,10 +1,9 @@
 module Interface exposing (InspectibleMem, Interface, Sim, TickRes, interface)
 
 import Array exposing (Array)
-import Array.Extra
 import Basics.Extra exposing (flip, uncurry)
 import Bitwise
-import Browser exposing (Document, document)
+import Browser
 import Browser.Dom
 import Browser.Events
 import Dict exposing (Dict)
@@ -17,92 +16,14 @@ import Element.Input
 import File exposing (File)
 import File.Download
 import File.Select
-import Html exposing (Html)
-import Html.Attributes
-import Html.Events
-import Json.Decode as Decode
-import List
+import Hex
 import List.Extra
+import List.Pad
 import Maybe exposing (withDefault)
 import Maybe.Extra
-import String
 import Style
 import Task
 import Time
-
-
-padToLen : Int -> a -> List a -> List a
-padToLen n p xs =
-    if n == 0 then
-        []
-
-    else
-        case xs of
-            [] ->
-                List.repeat n p
-
-            y :: ys ->
-                y :: padToLen (n - 1) p ys
-
-
-showHexNibble : Int -> Char
-showHexNibble n =
-    withDefault '0'
-        << List.Extra.getAt n
-        << String.toList
-    <|
-        "0123456789abcdef"
-
-
-showHexNibbles : List Char -> Int -> Int -> List Char
-showHexNibbles cs w n =
-    if w <= 0 && n == 0 then
-        []
-
-    else
-        let
-            lsn =
-                Bitwise.and 0x0F n
-        in
-        let
-            rest =
-                Bitwise.shiftRightZfBy 4 n
-        in
-        showHexNibbles (showHexNibble lsn :: cs) (w - 4) rest
-
-
-showHex : Int -> Int -> String
-showHex w =
-    String.fromList
-        << showHexNibbles [] w
-
-
-readHexNibble : Char -> Maybe Int
-readHexNibble c =
-    List.Extra.elemIndex c
-        << String.toList
-    <|
-        "0123456789abcdef"
-
-
-readHexNibbles : List Char -> Int -> Maybe Int
-readHexNibbles cs_ n =
-    case cs_ of
-        [] ->
-            Just n
-
-        c :: cs ->
-            Maybe.andThen
-                (readHexNibbles cs)
-                (Maybe.map
-                    (Bitwise.or (Bitwise.shiftLeftBy 4 n))
-                    (readHexNibble c)
-                )
-
-
-readHex : String -> Maybe Int
-readHex s =
-    readHexNibbles (String.toList s) 0
 
 
 type alias InspectibleMem simState =
@@ -308,7 +229,7 @@ update sim msg model =
                                 .value
 
                             Hexadecimal ->
-                                uncurry showHex << .getHex
+                                uncurry Hex.show << .getHex
                         )
                  <|
                     mem.contents
@@ -336,9 +257,9 @@ update sim msg model =
                             mem.setAll
 
                         Hexadecimal ->
-                            mem.setAllHex << List.map (withDefault 0 << readHex)
+                            mem.setAllHex << List.map (withDefault 0 << Hex.read)
                     )
-                        << padToLen (List.length mem.contents) ""
+                        << List.Pad.padRight "" (List.length mem.contents)
                         << String.split "\n"
                     <|
                         string
@@ -622,7 +543,7 @@ memTable sim model =
         model.simState
 
 
-view : Sim simState -> Model simState -> Document (Msg simState)
+view : Sim simState -> Model simState -> Browser.Document (Msg simState)
 view sim model =
     { title = "Foundry Simulator"
     , body =

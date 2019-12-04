@@ -72,8 +72,10 @@ data-files:
   - assembler/utils.c
   - assembler/utils.h
   - simulator/elm.json
+  - simulator/src/Hex.elm
   - simulator/src/Interface.elm
   - simulator/src/IntWidths.elm
+  - simulator/src/List/Pad.elm
   - simulator/src/Style.elm
   - verilog/pinDef.pcf
   - verilog/prescaler.v

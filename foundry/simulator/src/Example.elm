@@ -228,30 +228,30 @@ readInst s =
 
 decodeInst : IntW Num8 -> Inst
 decodeInst x =
-    case intToBits x of
+    case intToBits Little x of
         [ False, False, False, False, False, False, False, False ] ->
             Halt
 
-        [ True, False, False, False, d1, d2, d3, d4 ] ->
-            Ldi << bitsToInt <| [ d1, d2, d3, d4 ]
-
-        [ False, True, False, False, d1, d2, d3, d4 ] ->
-            Add << bitsToInt <| [ d1, d2, d3, d4 ]
-
-        [ True, True, False, False, d1, d2, d3, d4 ] ->
-            Sub << bitsToInt <| [ d1, d2, d3, d4 ]
+        [ False, False, False, True, d1, d2, d3, d4 ] ->
+            Ldi << bitsToInt Little <| [ d1, d2, d3, d4 ]
 
         [ False, False, True, False, d1, d2, d3, d4 ] ->
-            Ldm << bitsToInt <| [ d1, d2, d3, d4 ]
+            Add << bitsToInt Little <| [ d1, d2, d3, d4 ]
 
-        [ True, False, True, False, d1, d2, d3, d4 ] ->
-            Stm << bitsToInt <| [ d1, d2, d3, d4 ]
+        [ False, False, True, True, d1, d2, d3, d4 ] ->
+            Sub << bitsToInt Little <| [ d1, d2, d3, d4 ]
+
+        [ False, True, False, False, d1, d2, d3, d4 ] ->
+            Ldm << bitsToInt Little <| [ d1, d2, d3, d4 ]
+
+        [ False, True, False, True, d1, d2, d3, d4 ] ->
+            Stm << bitsToInt Little <| [ d1, d2, d3, d4 ]
 
         [ False, True, True, False, d1, d2, d3, d4 ] ->
-            Jp << bitsToInt <| [ d1, d2, d3, d4 ]
+            Jp << bitsToInt Little <| [ d1, d2, d3, d4 ]
 
-        [ True, True, True, False, d1, d2, d3, d4 ] ->
-            Jpz << bitsToInt <| [ d1, d2, d3, d4 ]
+        [ False, True, True, True, d1, d2, d3, d4 ] ->
+            Jpz << bitsToInt Little <| [ d1, d2, d3, d4 ]
 
         _ ->
             Halt
@@ -261,28 +261,28 @@ encodeInst : Inst -> IntW Num8
 encodeInst i =
     case i of
         Halt ->
-            int8 0
+            bitsToInt Little [ False, False, False, False, False, False, False, False ]
 
         Ldi n ->
-            concatBits4 n (int4 1)
+            concatBits4 (bitsToInt Little [ False, False, False, True ]) n
 
         Add n ->
-            concatBits4 n (int4 2)
+            concatBits4 (bitsToInt Little [ False, False, True, False ]) n
 
         Sub n ->
-            concatBits4 n (int4 3)
+            concatBits4 (bitsToInt Little [ False, False, True, True ]) n
 
         Ldm n ->
-            concatBits4 n (int4 4)
+            concatBits4 (bitsToInt Little [ False, True, False, False ]) n
 
         Stm n ->
-            concatBits4 n (int4 5)
+            concatBits4 (bitsToInt Little [ False, True, False, True ]) n
 
         Jp n ->
-            concatBits4 n (int4 6)
+            concatBits4 (bitsToInt Little [ False, True, True, False ]) n
 
         Jpz n ->
-            concatBits4 n (int4 7)
+            concatBits4 (bitsToInt Little [ False, True, True, True ]) n
 
 
 tick : SimState -> TickRes SimState
@@ -350,10 +350,10 @@ tick simState =
 
 getLeds : SimState -> List Bool
 getLeds simState =
-    intToBits simState.buffer
-        ++ intToBits (withDefault (int8 0) (Array.get (toInt simState.pc) simState.progMem))
-        ++ intToBits simState.pc
-        ++ intToBits simState.accum
+    intToBits Little simState.buffer
+        ++ intToBits Little (withDefault (int8 0) (Array.get (toInt simState.pc) simState.progMem))
+        ++ intToBits Little simState.pc
+        ++ intToBits Little simState.accum
 
 
 getInspectibleMems : SimState -> List (InspectibleMem SimState)
