@@ -9,7 +9,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
-    - uses: actions/setup-node@v1
     - name: Create .stack
       run: mkdir $GITHUB_WORKSPACE/.stack
     - name: Cache .stack
@@ -21,8 +20,12 @@ jobs:
       run: ln -s $GITHUB_WORKSPACE/.stack $HOME/.stack
     - name: Install libusb-dev
       run: sudo apt install libusb-1.0-0-dev
+    - name: Install nvm
+      run: curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.1/install.sh | bash
+    - name: Install node
+      run: nvm install node
     - name: Install elm-test
-      run: sudo npm install -g elm-test
+      run: npm install -g elm-test
     - name: Run tests
       run: stack test
     - name: Add to path
