@@ -21,7 +21,7 @@ jobs:
     - name: Install libusb-dev
       run: sudo apt install libusb-1.0-0-dev
     - name: Install elm-test
-      run: npm install -g elm-test
+      run: sudo npm install -g elm-test
     - name: Run tests
       run: stack test
     - name: Add to path
