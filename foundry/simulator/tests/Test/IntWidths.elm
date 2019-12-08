@@ -96,47 +96,47 @@ test_concatBitsW ( w, intW ) =
         [ Test.Extra.equalFn
             (Fuzz.tuple ( Fuzz.map int0 Fuzz.int, Fuzz.map intW Fuzz.int ))
             ("uncurry concatBits0 on Int" ++ String.fromInt w)
-            (bitsToInt Little << uncurry (flip (++)) << zipF (intToBits Little) (intToBits Little))
+            (bitsToInt Little << uncurry (++) << zipF (intToBits Little) (intToBits Little))
             (uncurry concatBits0)
         , Test.Extra.equalFn
             (Fuzz.tuple ( Fuzz.map int1 Fuzz.int, Fuzz.map intW Fuzz.int ))
             ("uncurry concatBits1 on Int" ++ String.fromInt w)
-            (bitsToInt Little << uncurry (flip (++)) << zipF (intToBits Little) (intToBits Little))
+            (bitsToInt Little << uncurry (++) << zipF (intToBits Little) (intToBits Little))
             (uncurry concatBits1)
         , Test.Extra.equalFn
             (Fuzz.tuple ( Fuzz.map int2 Fuzz.int, Fuzz.map intW Fuzz.int ))
             ("uncurry concatBits2 on Int" ++ String.fromInt w)
-            (bitsToInt Little << uncurry (flip (++)) << zipF (intToBits Little) (intToBits Little))
+            (bitsToInt Little << uncurry (++) << zipF (intToBits Little) (intToBits Little))
             (uncurry concatBits2)
         , Test.Extra.equalFn
             (Fuzz.tuple ( Fuzz.map int3 Fuzz.int, Fuzz.map intW Fuzz.int ))
             ("uncurry concatBits3 on Int" ++ String.fromInt w)
-            (bitsToInt Little << uncurry (flip (++)) << zipF (intToBits Little) (intToBits Little))
+            (bitsToInt Little << uncurry (++) << zipF (intToBits Little) (intToBits Little))
             (uncurry concatBits3)
         , Test.Extra.equalFn
             (Fuzz.tuple ( Fuzz.map int4 Fuzz.int, Fuzz.map intW Fuzz.int ))
             ("uncurry concatBits4 on Int" ++ String.fromInt w)
-            (bitsToInt Little << uncurry (flip (++)) << zipF (intToBits Little) (intToBits Little))
+            (bitsToInt Little << uncurry (++) << zipF (intToBits Little) (intToBits Little))
             (uncurry concatBits4)
         , Test.Extra.equalFn
             (Fuzz.tuple ( Fuzz.map int5 Fuzz.int, Fuzz.map intW Fuzz.int ))
             ("uncurry concatBits5 on Int" ++ String.fromInt w)
-            (bitsToInt Little << uncurry (flip (++)) << zipF (intToBits Little) (intToBits Little))
+            (bitsToInt Little << uncurry (++) << zipF (intToBits Little) (intToBits Little))
             (uncurry concatBits5)
         , Test.Extra.equalFn
             (Fuzz.tuple ( Fuzz.map int6 Fuzz.int, Fuzz.map intW Fuzz.int ))
             ("uncurry concatBits6 on Int" ++ String.fromInt w)
-            (bitsToInt Little << uncurry (flip (++)) << zipF (intToBits Little) (intToBits Little))
+            (bitsToInt Little << uncurry (++) << zipF (intToBits Little) (intToBits Little))
             (uncurry concatBits6)
         , Test.Extra.equalFn
             (Fuzz.tuple ( Fuzz.map int7 Fuzz.int, Fuzz.map intW Fuzz.int ))
             ("uncurry concatBits7 on Int" ++ String.fromInt w)
-            (bitsToInt Little << uncurry (flip (++)) << zipF (intToBits Little) (intToBits Little))
+            (bitsToInt Little << uncurry (++) << zipF (intToBits Little) (intToBits Little))
             (uncurry concatBits7)
         , Test.Extra.equalFn
             (Fuzz.tuple ( Fuzz.map int8 Fuzz.int, Fuzz.map intW Fuzz.int ))
             ("uncurry concatBits8 on Int" ++ String.fromInt w)
-            (bitsToInt Little << uncurry (flip (++)) << zipF (intToBits Little) (intToBits Little))
+            (bitsToInt Little << uncurry (++) << zipF (intToBits Little) (intToBits Little))
             (uncurry concatBits8)
         ]
 

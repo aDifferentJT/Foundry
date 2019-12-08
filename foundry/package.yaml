@@ -84,6 +84,12 @@ data-files:
   - verilog/wrapper.v
 
 tests:
+  Elm-test:
+    main:                test/simulator/Elm.hs
+    dependencies:
+      - directory
+      - filepath
+      - process
   HLint-test:
     main:                test/HLint.hs
     dependencies:
