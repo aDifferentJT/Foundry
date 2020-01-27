@@ -652,8 +652,8 @@ runElm :: FilePath -> ElmStmt -> IO ()
 runElm fn elm =
   withSystemTempDirectory (takeBaseName fn) $ \dir -> do
     let elmDir = dir </> "elm"
-    jsonSrc <- getDataFileName "simulator/elm/elm.json"
-    copyFile jsonSrc (elmDir </> "elm.json")
+    elmJsonSrc <- getDataFileName "simulator/elm/elm.json"
+    copyFile elmJsonSrc (elmDir </> "elm.json")
     createDirectory (elmDir </> "src")
     mapM_ (\f -> getDataFileName ("simulator/elm/src/" ++ f) >>= copyFileMakingParents (elmDir </> "src" </> f))
       [ "Bootstrap/Form/Range.elm"
@@ -664,9 +664,43 @@ runElm fn elm =
       , "List/Pad.elm"
       ]
     writeFile (elmDir </> "src/Main.elm") . encodeUtf8 . pretty $ elm
+    (_, _, _, phElm) <- createProcess $
+      ( proc 
+        "elm"
+        [ "make"
+        , "--output=main.js"
+        , "src/Main.elm"
+        ]
+      )
+      { cwd = Just elmDir }
+    void . waitForProcess $ phElm
+
+    let pursDir = dir </> "purs"
+    bowerJsonSrc <- getDataFileName "simulator/purs/bower.json"
+    copyFile bowerJsonSrc (pursDir </> "bower.json")
+    createDirectory (pursDir </> "src")
+    mapM_ (\f -> getDataFileName ("simulator/purs/src/" ++ f) >>= copyFileMakingParents (pursDir </> "src" </> f))
+      [ "Elm.js"
+      , "Elm.purs"
+      , "Ice40Board.purs"
+      , "IceBurn.purs"
+      , "Main.purs"
+      , "WebUSB.js"
+      , "WebUSB.purs"
+      ]
+    (_, _, _, phPulp) <- createProcess $
+      ( proc 
+        "pulp"
+        [ "browserify"
+        , "--to=main.js"
+        ]
+      )
+      { cwd = Just pursDir }
+    void . waitForProcess $ phPulp
+
     fnAbs <- (</> fn) <$> getCurrentDirectory
-    (_, _, _, ph) <- createProcess $ (proc "elm" ["make", "--output=" ++ fnAbs, "src/Main.elm"]) { cwd = Just elmDir }
-    void . waitForProcess $ ph
+    copyFile (pursDir </> "main.js") fnAbs
+
 
 genSimulatorBS :: MonadIO m => Either Text Proc -> m ByteString
 genSimulatorBS ast =

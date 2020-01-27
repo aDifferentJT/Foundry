@@ -80,6 +80,14 @@ data-files:
   - simulator/elm/src/Interface.elm
   - simulator/elm/src/IntWidths.elm
   - simulator/elm/src/List/Pad.elm
+  - simulator/webusb/bower.json
+  - simulator/webusb/src/Elm.js
+  - simulator/webusb/src/Elm.purs
+  - simulator/webusb/src/Ice40Board.purs
+  - simulator/webusb/src/IceBurn.purs
+  - simulator/webusb/src/Main.purs
+  - simulator/webusb/src/WebUSB.js
+  - simulator/webusb/src/WebUSB.purs
   - verilog/pinDef.pcf
   - verilog/prescaler.v
   - verilog/ram.v
