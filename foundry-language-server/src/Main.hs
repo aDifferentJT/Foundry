@@ -10,7 +10,7 @@ import GenSimulator (hostSimulatorUpdate)
 import Language.Foundry.Parser (parseM, parse')
 import Language.Foundry.Parser.AlexPosn (AlexPosn(AlexPosn), Locatable(..))
 import Language.Foundry.Parser.Lexer (Token(..), readToken)
-import Language.Foundry.Parser.Monad (Defn(..), ParserState(..), initialParserState, runParser')
+import Language.Foundry.Parser.Monad (Defn(..), ParserState(..), initialParserState, runParser', printErrors)
 import Language.Foundry.Proc (Proc)
 
 import Control.Concurrent (forkIO)
@@ -59,16 +59,18 @@ getTokenInformation (Bits (Locatable bs _)) = Just $
   "0b" ++ (mconcat . map tshow $ bs) ++ " = " ++ (tshow . bitsToInt Little $ bs)
 getTokenInformation _ = Nothing
 
-reactor :: LspFuncs Config -> TQueue ReactorInput -> (Maybe Proc -> IO ()) -> IO ()
+reactor :: LspFuncs Config -> TQueue ReactorInput -> (Either Text Proc -> IO ()) -> IO ()
 reactor LspFuncs{..} ch updateSimulator = forever . ((liftIO . atomically . readTQueue $ ch) >>=) $ \case
   SendMessage msg -> sendFunc msg
   ShowDiagnostics uri ->
     (getVirtualFileFunc . toNormalizedUri $ uri) >>= \case
       Nothing -> return ()
-      Just (VirtualFile version rope _) -> case parse' . toText $ rope of
+      Just (VirtualFile version rope _) ->
+        let text = toText rope in
+        case parse' text of
         Right p -> do
           flushDiagnosticsBySourceFunc 0 . Just $ "Foundry"
-          updateSimulator . Just $ p
+          updateSimulator . Right $ p
         Left es -> do
           let ds = Map.fromList
                 [ ( Just "Foundry"
@@ -85,8 +87,8 @@ reactor LspFuncs{..} ch updateSimulator = forever . ((liftIO . atomically . read
                   )
                 ]
           publishDiagnosticsFunc 100 (toNormalizedUri uri) (Just version) ds
-          updateSimulator Nothing
-  CloseDocument -> updateSimulator Nothing
+          updateSimulator . Left . printErrors text $ es
+  CloseDocument -> updateSimulator . Left $ "Document closed"
   ShowHover req -> void . runMaybeT $ do
     VirtualFile _ rope _ <- MaybeT . getVirtualFileFunc . toNormalizedUri $ req ^. Lens.params . Lens.textDocument . Lens.uri
     let Position lineNum col = req ^. Lens.params . Lens.position

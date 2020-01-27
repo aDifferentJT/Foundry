@@ -37,8 +37,10 @@ library:
     - filepath
     - foundry-parser
     - group
+    - iceburn
     - maps
     - mono-traversable
+    - mtl
     - process
     - simple-c-ast
     - simple-elm-ast
@@ -71,12 +73,13 @@ data-files:
   - assembler/plugin.h
   - assembler/utils.c
   - assembler/utils.h
-  - simulator/elm.json
-  - simulator/src/Hex.elm
-  - simulator/src/Interface.elm
-  - simulator/src/IntWidths.elm
-  - simulator/src/List/Pad.elm
-  - simulator/src/Style.elm
+  - simulator/elm/elm.json
+  - simulator/elm/src/Bootstrap/Form/Range.elm
+  - simulator/elm/src/Hex.elm
+  - simulator/elm/src/Icons.elm
+  - simulator/elm/src/Interface.elm
+  - simulator/elm/src/IntWidths.elm
+  - simulator/elm/src/List/Pad.elm
   - verilog/pinDef.pcf
   - verilog/prescaler.v
   - verilog/ram.v

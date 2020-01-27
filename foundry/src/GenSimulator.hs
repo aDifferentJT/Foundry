@@ -9,32 +9,33 @@ Maintainer  : jonathan.tanner@sjc.ox.ac.uk
 Stability   : experimental
 -}
 module GenSimulator
-  ( genSimulator
+  ( genElm
   , hostSimulator
   , hostSimulatorUpdate
+  , runElm
   ) where
 
 import ClassyPrelude
 
+import Control.Concurrent (forkIO)
+import Control.Monad (void)
+import Control.Monad.Except (ExceptT, runExceptT)
 import Data.Bit (Bit(..))
 import Data.Bit.List (Endianness(..), bitsToInt)
-import Language.Elm.AST
-import Language.Elm.Pretty (pretty)
-import Language.Foundry.Proc
-import Maps.Text (textHeadToUpper)
-
-import Paths_foundry
-
-import Control.Concurrent (forkIO)
 import Data.List (foldl)
 import Data.Maybe (fromMaybe, mapMaybe)
-import Data.Text.IO (hPutStrLn)
+import Language.Elm.AST
+import Language.Elm.Pretty (pretty)
+import Language.Foundry.Parser
+import Language.Foundry.Proc
+import Maps.Text (textHeadToUpper)
 import qualified Snap.Core as Snap
 import qualified Snap.Http.Server as Snap
 import System.Directory (copyFile, createDirectory, createDirectoryIfMissing, getCurrentDirectory)
 import System.FilePath ((</>), takeBaseName, takeDirectory)
-import System.IO (Handle)
 import System.Process (CreateProcess(cwd), createProcess, proc, waitForProcess)
+
+import Paths_foundry
 
 elmType :: Type -> ElmType
 elmType (RegT _)  = "String"
@@ -632,37 +633,45 @@ genElm = ElmStmts . intersperse (ElmStmts . replicate 2 $ ElmBlankLine) . flap
   , genMain
   ]
 
-writeElm :: Handle -> Proc -> IO ()
-writeElm h = hPutStrLn h . pretty . genElm
+genErrorPage :: Text -> ElmStmt
+genErrorPage e = ElmStmts
+  [ ElmModule "Main" ["main"]
+  , ElmBlankLine
+  , ElmImport "Interface" [".."]
+  , ElmBlankLine
+  , ElmTypeSig "main" (ElmTypeFuncAppl "Interface" [ElmTupleType []])
+  , ElmDef "main" (ElmFuncAppl "errorPage" [ElmStringExpr e])
+  ]
 
 copyFileMakingParents :: FilePath -> FilePath -> IO ()
 copyFileMakingParents dest src = do
   createDirectoryIfMissing True (takeDirectory dest)
   copyFile src dest
 
-genSimulator :: FilePath -> Proc -> IO ()
-genSimulator fn ast =
+runElm :: FilePath -> ElmStmt -> IO ()
+runElm fn elm =
   withSystemTempDirectory (takeBaseName fn) $ \dir -> do
-    jsonSrc <- getDataFileName "simulator/elm.json"
-    copyFile jsonSrc (dir </> "elm.json")
-    createDirectory (dir </> "src")
-    mapM_ (\f -> getDataFileName ("simulator/src/" ++ f) >>= copyFileMakingParents (dir </> "src" </> f))
-      [ "Hex.elm"
+    let elmDir = dir </> "elm"
+    jsonSrc <- getDataFileName "simulator/elm/elm.json"
+    copyFile jsonSrc (elmDir </> "elm.json")
+    createDirectory (elmDir </> "src")
+    mapM_ (\f -> getDataFileName ("simulator/elm/src/" ++ f) >>= copyFileMakingParents (elmDir </> "src" </> f))
+      [ "Bootstrap/Form/Range.elm"
+      , "Hex.elm"
+      , "Icons.elm"
       , "Interface.elm"
       , "IntWidths.elm"
       , "List/Pad.elm"
-      , "Style.elm"
       ]
-    withFile (dir </> "src/Main.elm") WriteMode $ \h ->
-      writeElm h ast
+    writeFile (elmDir </> "src/Main.elm") . encodeUtf8 . pretty $ elm
     fnAbs <- (</> fn) <$> getCurrentDirectory
-    (_, _, _, ph) <- createProcess $ (proc "elm" ["make", "--output=" ++ fnAbs, "src/Main.elm"]) { cwd = Just dir }
+    (_, _, _, ph) <- createProcess $ (proc "elm" ["make", "--output=" ++ fnAbs, "src/Main.elm"]) { cwd = Just elmDir }
     void . waitForProcess $ ph
 
-genSimulatorBS :: Proc -> IO ByteString
+genSimulatorBS :: MonadIO m => Either Text Proc -> m ByteString
 genSimulatorBS ast =
-  withSystemTempFile "index.html" $ \tmpFn tmpH -> do
-    genSimulator tmpFn ast
+  liftIO . withSystemTempFile "index.html" $ \tmpFn tmpH -> do
+    runElm tmpFn . either genErrorPage genElm $ ast
     hGetContents tmpH
 
 snapConfig :: Int -> Snap.Config Snap.Snap a
@@ -672,19 +681,17 @@ snapConfig port =
   . Snap.setPort port
   $ mempty
 
-hostSimulator :: Int -> Proc -> IO ()
-hostSimulator port ast = do
-  htmlBS <- genSimulatorBS ast
-  Snap.httpServe (snapConfig port) $
-    Snap.ifTop (Snap.writeBS htmlBS)
+hostSimulator :: Int -> FilePath -> (Proc -> ExceptT Text IO ()) -> IO ()
+hostSimulator port fn burn =
+  Snap.httpServe (snapConfig port) . asum $
+    [ Snap.method Snap.GET . Snap.ifTop $ (liftIO . runExceptT . parseFile $ fn) >>= genSimulatorBS >>= Snap.writeBS
+    , Snap.method Snap.POST . Snap.dir "burn" . Snap.ifTop $ (liftIO . runExceptT $ parseFile fn >>= burn) >>= Snap.writeBS . either (encodeUtf8 . tshow) (const "null")
+    , Snap.method Snap.GET . Snap.dir "open" . Snap.ifTop $ Snap.getQueryParam "file" >>= maybe Snap.pass (genSimulatorBS . parse . decodeUtf8) >>= Snap.writeBS
+    ]
 
-hostSimulatorUpdate :: Int -> IO (Maybe Proc -> IO ())
+hostSimulatorUpdate :: Int -> IO (Either Text Proc -> IO ())
 hostSimulatorUpdate port = do
-  htmlBS <- newTVarIO Nothing
-  _ <- forkIO . Snap.httpServe (snapConfig port) $
-    Snap.ifTop ((liftIO . readTVarIO $ htmlBS) >>= \case
-      Just bs -> Snap.writeBS bs
-      Nothing -> Snap.modifyResponse $ Snap.setResponseStatus 503 "No file open to show"
-    )
-  return (maybe (return Nothing) (fmap Just . genSimulatorBS) >=> atomically . writeTVar htmlBS)
+  htmlBS <- genSimulatorBS (Left "No file open yet") >>= newTVarIO
+  _ <- forkIO . Snap.httpServe (snapConfig port) . Snap.ifTop $ (liftIO . readTVarIO $ htmlBS) >>= Snap.writeBS
+  return (genSimulatorBS >=> atomically . writeTVar htmlBS)
 

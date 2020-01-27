@@ -52,6 +52,7 @@ module Language.Foundry.Parser.Monad
   , makeOpExpr
   , makeTernaryExpr
   , runParser'
+  , printErrors
   , runParser
   ) where
 
@@ -525,8 +526,8 @@ makeTernaryExpr c e1 e2 = do
 runParser' :: ParserMonad a -> Text -> Either [(Text, Maybe (AlexPosn, AlexPosn))] a
 runParser' m = runErrors . (fst <$>) . runStateT m . initialParserState
 
-printErrors :: Text -> Either [(Text, Maybe (AlexPosn, AlexPosn))] a -> Either Text a
-printErrors s = mapLeft (intercalate "\n" . map printError)
+printErrors :: Text -> [(Text, Maybe (AlexPosn, AlexPosn))] -> Text
+printErrors s = intercalate "\n" . map printError
   where printError :: (Text, Maybe (AlexPosn, AlexPosn)) -> Text
         printError (e, Nothing) = e ++ "\n"
         printError (e, Just (AlexPosn a1 l1 c1, AlexPosn a2 l2 c2))
@@ -538,4 +539,5 @@ printErrors s = mapLeft (intercalate "\n" . map printError)
 
 -- | Run the given parser on the given input string and either return a nicely formatted error or the output of the parser
 runParser :: ParserMonad a -> Text -> Either Text a
-runParser m s = printErrors s (runParser' m s)
+runParser m s = mapLeft (printErrors s) . runParser' m $ s
+

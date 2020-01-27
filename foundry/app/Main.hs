@@ -4,11 +4,10 @@ module Main(main) where
 
 import ClassyPrelude hiding (getArgs)
 
-import CallSynth (callSynth)
+import CallSynth (burn)
 import GenAssembler (genAssembler)
-import GenSimulator (genSimulator, hostSimulator)
+import GenSimulator (genElm, hostSimulator, runElm)
 import GenVerilog (genVerilog)
-import IceBurn (burn)
 import Language.Foundry.Parser (parseFile)
 
 import Control.Monad (when)
@@ -35,15 +34,15 @@ main = runExceptT
     ast <- parseFile fn
     let verilog = genVerilog memoryFiles ast
     when shouldGenVerilog . lift . writeFileUtf8 (fn -<.> "v") $ verilog
-    when shouldBurn $ (lift . callSynth $ verilog) >>= burn
+    when shouldBurn . burn $ verilog
     when shouldGenAssembler . lift . genAssembler (dropExtensions . replaceBaseName fn $ (takeBaseName fn ++ "_assembler")) $ ast
     lift $ case shouldGenSimulator of
       NoSimulator ->
         return ()
       WriteToFile simFn ->
-        genSimulator simFn ast
+        runElm simFn . genElm $ ast
       HostOnPort p ->
-        hostSimulator p ast
+        hostSimulator p fn (burn . genVerilog memoryFiles)
     ) >>= \case
     Left err -> putStr err
     Right () -> return ()

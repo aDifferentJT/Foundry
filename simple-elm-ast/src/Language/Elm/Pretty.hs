@@ -62,6 +62,7 @@ paren (a, p) x =
     GT -> ts'
 
 prettyTuple :: Pretty a => [a] -> ([(ElmIndent, Text)], (ElmAssoc, ElmPrec))
+prettyTuple [] = ([(ElmNoIndent, "()")], (ElmNoAssoc, ElmPrecParen))
 prettyTuple xs =
   ( let lss = map (fst . prettyLines) xs in
     if any isPlural lss

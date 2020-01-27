@@ -9,14 +9,17 @@ Maintainer  : jonathan.tanner@sjc.ox.ac.uk
 Stability   : experimental
 -}
 module CallSynth
-  ( callSynth
+  ( burn
   ) where
 
 import ClassyPrelude
 
 import Paths_foundry
 
+import qualified IceBurn (burn)
+
 import Control.Concurrent (forkIO)
+import Control.Monad.Except (ExceptT)
 import Data.Text.IO (hPutStrLn)
 import System.IO (Handle, openFile)
 import System.Process
@@ -87,4 +90,7 @@ callSynth verilog =
       _ <- waitForProcess ascP
       _ <- waitForProcess binP
       return bin
+
+burn :: Text -> ExceptT Text IO ()
+burn verilog = (lift . callSynth $ verilog) >>= IceBurn.burn
 
