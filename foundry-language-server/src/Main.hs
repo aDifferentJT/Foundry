@@ -6,12 +6,12 @@ import ClassyPrelude hiding (Handler)
 
 import Control.Monad.Errors (runErrors, forgive)
 import Data.Bit.List (Endianness(Little), bitsToInt)
-import GenSimulator (hostSimulatorUpdate)
 import Language.Foundry.Parser (parseM, parse')
 import Language.Foundry.Parser.AlexPosn (AlexPosn(AlexPosn), Locatable(..))
 import Language.Foundry.Parser.Lexer (Token(..), readToken)
 import Language.Foundry.Parser.Monad (Defn(..), ParserState(..), initialParserState, runParser', printErrors)
 import Language.Foundry.Proc (Proc)
+import Web (hostSimulatorUpdate)
 
 import Control.Concurrent (forkIO)
 import Control.Lens ((^.), view)

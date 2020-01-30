@@ -10,6 +10,7 @@ Stability   : experimental
 -}
 module CallSynth
   ( burn
+  , callSynth
   ) where
 
 import ClassyPrelude

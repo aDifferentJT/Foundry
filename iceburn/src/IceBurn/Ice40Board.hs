@@ -120,7 +120,7 @@ boardGetSerial board = decodeUtf8 . takeWhile (/= 0x00) <$> boardCtrlRead board 
 
 boardCtrlRead :: Ice40Board -> Request -> Size -> ExceptT Text IO ByteString
 boardCtrlRead Ice40Board{..} req size =
-  lift (readControl boardDevice (ControlSetup Vendor ToEndpoint req 0 0) size 100)
+  lift (readControl boardDevice (ControlSetup Vendor ToDevice req 0 0) size 100)
   >>= \case
     (bs, Completed) -> return bs
     (_,  TimedOut)  -> throwError "Request timed out"

@@ -25,12 +25,14 @@ library:
     - GenAssembler
     - GenSimulator
     - GenVerilog
+    - Web
 
   build-tools:
     - alex
     - happy
   dependencies:
     - bit-list
+    - bytestring
     - classy-prelude
     - containers
     - directory
@@ -47,7 +49,9 @@ library:
     - simple-verilog-ast
     - snap-core
     - snap-server
+    - temporary
     - text
+    - word-encoder
 
 executables:
   foundry:
@@ -80,14 +84,16 @@ data-files:
   - simulator/elm/src/Interface.elm
   - simulator/elm/src/IntWidths.elm
   - simulator/elm/src/List/Pad.elm
-  - simulator/webusb/bower.json
-  - simulator/webusb/src/Elm.js
-  - simulator/webusb/src/Elm.purs
-  - simulator/webusb/src/Ice40Board.purs
-  - simulator/webusb/src/IceBurn.purs
-  - simulator/webusb/src/Main.purs
-  - simulator/webusb/src/WebUSB.js
-  - simulator/webusb/src/WebUSB.purs
+  - simulator/elm/src/WebUSB.elm
+  - simulator/index.html
+  - simulator/purs/bower.json
+  - simulator/purs/src/ElmPorts.js.append
+  - simulator/purs/src/ElmPorts.purs
+  - simulator/purs/src/Ice40Board.purs
+  - simulator/purs/src/IceBurn.purs
+  - simulator/purs/src/Main.purs
+  - simulator/purs/src/WebUSB.js
+  - simulator/purs/src/WebUSB.purs
   - verilog/pinDef.pcf
   - verilog/prescaler.v
   - verilog/ram.v

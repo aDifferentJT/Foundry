@@ -10,32 +10,25 @@ Stability   : experimental
 -}
 module GenSimulator
   ( genElm
-  , hostSimulator
-  , hostSimulatorUpdate
-  , runElm
+  , genSimulatorBS
   ) where
 
 import ClassyPrelude
 
-import Control.Concurrent (forkIO)
-import Control.Monad (void)
-import Control.Monad.Except (ExceptT, runExceptT)
 import Data.Bit (Bit(..))
 import Data.Bit.List (Endianness(..), bitsToInt)
+import Data.ByteString (appendFile)
 import Data.List (foldl)
 import Data.Maybe (fromMaybe, mapMaybe)
 import Language.Elm.AST
 import Language.Elm.Pretty (pretty)
-import Language.Foundry.Parser
 import Language.Foundry.Proc
 import Maps.Text (textHeadToUpper)
-import qualified Snap.Core as Snap
-import qualified Snap.Http.Server as Snap
-import System.Directory (copyFile, createDirectory, createDirectoryIfMissing, getCurrentDirectory)
-import System.FilePath ((</>), takeBaseName, takeDirectory)
-import System.Process (CreateProcess(cwd), createProcess, proc, waitForProcess)
-
 import Paths_foundry
+import System.Directory (copyFile, createDirectoryIfMissing, withCurrentDirectory)
+import System.FilePath ((</>), takeDirectory)
+import System.IO.Temp (getCanonicalTemporaryDirectory)
+import System.Process (CreateProcess(..), StdStream(CreatePipe), callProcess, createProcess, proc, waitForProcess)
 
 elmType :: Type -> ElmType
 elmType (RegT _)  = "String"
@@ -644,88 +637,52 @@ genErrorPage e = ElmStmts
   ]
 
 copyFileMakingParents :: FilePath -> FilePath -> IO ()
-copyFileMakingParents dest src = do
+copyFileMakingParents src dest = do
   createDirectoryIfMissing True (takeDirectory dest)
   copyFile src dest
 
-runElm :: FilePath -> ElmStmt -> IO ()
-runElm fn elm =
-  withSystemTempDirectory (takeBaseName fn) $ \dir -> do
-    let elmDir = dir </> "elm"
-    elmJsonSrc <- getDataFileName "simulator/elm/elm.json"
-    copyFile elmJsonSrc (elmDir </> "elm.json")
-    createDirectory (elmDir </> "src")
-    mapM_ (\f -> getDataFileName ("simulator/elm/src/" ++ f) >>= copyFileMakingParents (elmDir </> "src" </> f))
-      [ "Bootstrap/Form/Range.elm"
-      , "Hex.elm"
-      , "Icons.elm"
-      , "Interface.elm"
-      , "IntWidths.elm"
-      , "List/Pad.elm"
-      ]
-    writeFile (elmDir </> "src/Main.elm") . encodeUtf8 . pretty $ elm
-    (_, _, _, phElm) <- createProcess $
-      ( proc 
-        "elm"
-        [ "make"
-        , "--output=main.js"
-        , "src/Main.elm"
-        ]
-      )
-      { cwd = Just elmDir }
-    void . waitForProcess $ phElm
+runElm :: ElmStmt -> IO ByteString
+runElm elm = do
+  dir <- (</> "foundry-simulator") <$> getCanonicalTemporaryDirectory
+  let elmDir = dir </> "elm"
+  let elmSrcDir = elmDir </> "src"
+  elmJsonSrc <- getDataFileName "simulator/elm/elm.json"
+  copyFileMakingParents elmJsonSrc (elmDir </> "elm.json")
+  mapM_ (\f -> getDataFileName ("simulator/elm/src/" ++ f) >>= flip copyFileMakingParents (elmSrcDir </> f))
+    [ "Bootstrap/Form/Range.elm"
+    , "Hex.elm"
+    , "Icons.elm"
+    , "Interface.elm"
+    , "IntWidths.elm"
+    , "List/Pad.elm"
+    , "WebUSB.elm"
+    ]
+  writeFile (elmSrcDir </> "Main.elm") . encodeUtf8 . pretty $ elm
+  withCurrentDirectory elmDir $
+    callProcess "elm" ["make", "--optimize", "--output=main.js", "src/Main.elm"]
 
-    let pursDir = dir </> "purs"
-    bowerJsonSrc <- getDataFileName "simulator/purs/bower.json"
-    copyFile bowerJsonSrc (pursDir </> "bower.json")
-    createDirectory (pursDir </> "src")
-    mapM_ (\f -> getDataFileName ("simulator/purs/src/" ++ f) >>= copyFileMakingParents (pursDir </> "src" </> f))
-      [ "Elm.js"
-      , "Elm.purs"
-      , "Ice40Board.purs"
-      , "IceBurn.purs"
-      , "Main.purs"
-      , "WebUSB.js"
-      , "WebUSB.purs"
-      ]
-    (_, _, _, phPulp) <- createProcess $
-      ( proc 
-        "pulp"
-        [ "browserify"
-        , "--to=main.js"
-        ]
-      )
-      { cwd = Just pursDir }
-    void . waitForProcess $ phPulp
-
-    fnAbs <- (</> fn) <$> getCurrentDirectory
-    copyFile (pursDir </> "main.js") fnAbs
-
+  let pursDir = dir </> "purs"
+  let pursSrcDir = pursDir </> "src"
+  bowerJsonSrc <- getDataFileName "simulator/purs/bower.json"
+  copyFileMakingParents bowerJsonSrc (pursDir </> "bower.json")
+  mapM_ (\f -> getDataFileName ("simulator/purs/src/" ++ f) >>= flip copyFileMakingParents (pursSrcDir </> f))
+    [ "ElmPorts.purs"
+    , "Ice40Board.purs"
+    , "IceBurn.purs"
+    , "Main.purs"
+    , "WebUSB.js"
+    , "WebUSB.purs"
+    ]
+  copyFileMakingParents (elmDir </> "main.js") (pursSrcDir </> "ElmPorts.js")
+  appendFile (pursSrcDir </> "ElmPorts.js") "\n\n\n"
+  getDataFileName "simulator/purs/src/ElmPorts.js.append" >>= readFile >>= appendFile (pursSrcDir </> "ElmPorts.js")
+  withCurrentDirectory pursDir $ do
+    callProcess "bower" ["install"]
+    (_, Just outH, _, ph) <- createProcess $ (proc "pulp" ["browserify"]) { std_out = CreatePipe }
+    bs <- hGetContents outH
+    _ <- waitForProcess ph
+    return bs
 
 genSimulatorBS :: MonadIO m => Either Text Proc -> m ByteString
-genSimulatorBS ast =
-  liftIO . withSystemTempFile "index.html" $ \tmpFn tmpH -> do
-    runElm tmpFn . either genErrorPage genElm $ ast
-    hGetContents tmpH
-
-snapConfig :: Int -> Snap.Config Snap.Snap a
-snapConfig port =
-  Snap.setAccessLog Snap.ConfigNoLog
-  . Snap.setErrorLog Snap.ConfigNoLog
-  . Snap.setPort port
-  $ mempty
-
-hostSimulator :: Int -> FilePath -> (Proc -> ExceptT Text IO ()) -> IO ()
-hostSimulator port fn burn =
-  Snap.httpServe (snapConfig port) . asum $
-    [ Snap.method Snap.GET . Snap.ifTop $ (liftIO . runExceptT . parseFile $ fn) >>= genSimulatorBS >>= Snap.writeBS
-    , Snap.method Snap.POST . Snap.dir "burn" . Snap.ifTop $ (liftIO . runExceptT $ parseFile fn >>= burn) >>= Snap.writeBS . either (encodeUtf8 . tshow) (const "null")
-    , Snap.method Snap.GET . Snap.dir "open" . Snap.ifTop $ Snap.getQueryParam "file" >>= maybe Snap.pass (genSimulatorBS . parse . decodeUtf8) >>= Snap.writeBS
-    ]
-
-hostSimulatorUpdate :: Int -> IO (Either Text Proc -> IO ())
-hostSimulatorUpdate port = do
-  htmlBS <- genSimulatorBS (Left "No file open yet") >>= newTVarIO
-  _ <- forkIO . Snap.httpServe (snapConfig port) . Snap.ifTop $ (liftIO . readTVarIO $ htmlBS) >>= Snap.writeBS
-  return (genSimulatorBS >=> atomically . writeTVar htmlBS)
+genSimulatorBS = liftIO . runElm . either genErrorPage genElm
 

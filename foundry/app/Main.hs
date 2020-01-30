@@ -6,9 +6,10 @@ import ClassyPrelude hiding (getArgs)
 
 import CallSynth (burn)
 import GenAssembler (genAssembler)
-import GenSimulator (genElm, hostSimulator, runElm)
+import GenSimulator (genSimulatorBS)
 import GenVerilog (genVerilog)
 import Language.Foundry.Parser (parseFile)
+import Web (hostSimulator)
 
 import Control.Monad (when)
 import Control.Monad.Except (ExceptT, runExceptT, throwError)
@@ -40,9 +41,9 @@ main = runExceptT
       NoSimulator ->
         return ()
       WriteToFile simFn ->
-        runElm simFn . genElm $ ast
+        genSimulatorBS (return ast) >>= writeFile simFn
       HostOnPort p ->
-        hostSimulator p fn (burn . genVerilog memoryFiles)
+        hostSimulator p fn
     ) >>= \case
     Left err -> putStr err
     Right () -> return ()

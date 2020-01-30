@@ -2,17 +2,28 @@ module Main where
 
 import Prelude
 
-import Elm (init, subscribe) as Elm
+import ElmPorts (init, send, sendNull, subscribe) as Elm
 
-import IceBurn (Octet)
+import IceBurn (Octet, burn)
 
+import Control.Monad.Except.Trans (runExceptT)
+import Data.Either (Either(Left, Right))
 import Effect (Effect)
+import Effect.Aff (runAff_)
 import Effect.Console (log)
 
 main :: Effect Unit
 main = do
   app <- Elm.init
-  Elm.subscribe app "burn" $ \(bs :: Array Octet) -> do
-    log "Burning:"
-    log (show bs)
-  log "Hello sailor!"
+  Elm.subscribe app "burn" $
+    runAff_
+      (case _ of
+        Left e -> do
+          log (show e)
+          Elm.send app "burnFinished" "JS Error (details in console)"
+        Right (Left e)     -> Elm.send app "burnFinished" e
+        Right (Right unit) -> Elm.sendNull app "burnFinished"
+      )
+    <<< runExceptT
+    <<< burn
+

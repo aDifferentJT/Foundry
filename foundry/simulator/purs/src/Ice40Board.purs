@@ -37,6 +37,9 @@ import Data.Tuple (Tuple(Tuple), uncurry)
 import Data.Unfoldable (unfoldr)
 import Effect.Aff (Aff)
 
+import Effect.Class (liftEffect)
+import Effect.Console (log)
+
 zipMaybe :: forall a b. Array a -> Array b -> Array (Tuple (Maybe a) (Maybe b))
 zipMaybe xs ys =
   let n = length xs - length ys in
@@ -108,7 +111,7 @@ withBoard :: forall a. (Ice40Board -> ExceptT String Aff a) -> ExceptT String Af
 withBoard act =
   withDevice ice40VendorId ice40ProductId $ \dev ->
     withConfiguration dev (Octet 1) $ \conf ->
-      withInterface conf (Octet 1) $ \intf -> do
+      withInterface conf (Octet 0) $ \intf -> do
         let board = Ice40Board intf
         bType <- boardGetType board
         unless (bType == "iCE40") <<< throwError $ "Board type " <> bType <> " does not match expected \"iCE40\""
@@ -124,14 +127,14 @@ boardGetSerial board =
 
 boardCtrlRead :: Ice40Board -> Octet -> Int -> ExceptT String Aff (Array Octet)
 boardCtrlRead (Ice40Board intf) req size =
-  readControl intf Vendor ToEndpoint req 0 0 size
+  readControl intf Vendor ToDevice req 0 0 size
 
-boardCmdI :: Ice40Board -> (Array Octet) -> Int -> ExceptT String Aff (Array Octet)
+boardCmdI :: Ice40Board -> Array Octet -> Int -> ExceptT String Aff (Array Octet)
 boardCmdI (Ice40Board intf) bs size = do
   usbWrite intf cmdOut (cons (Octet <<< length $ bs) bs)
   usbRead intf cmdIn size
 
-boardCmd :: Ice40Board -> Octet -> Octet -> (Array Octet) -> Int -> ExceptT String Aff (Array Octet)
+boardCmd :: Ice40Board -> Octet -> Octet -> Array Octet -> Int -> ExceptT String Aff (Array Octet)
 boardCmd board cmd subCmd =
   boardCmdI board <<< cons cmd <<< cons subCmd
 
@@ -189,7 +192,7 @@ spiSetMode :: SPI -> ExceptT String Aff Unit
 spiSetMode (SPI board) =
   void $ boardCmd board (Octet 0x06) (Octet 0x05) [Octet 0x00, Octet 0x00] 16
 
-spiIoFunc :: SPI -> (Array Octet) -> Int -> ExceptT String Aff (Array Octet)
+spiIoFunc :: SPI -> Array Octet -> Int -> ExceptT String Aff (Array Octet)
 spiIoFunc (SPI board@(Ice40Board dev)) writeBytes readSize = do
   let writeBytes' = writeBytes <> replicate (readSize - length writeBytes) (Octet 0)
   _ <- boardCmd board (Octet 0x06) (Octet 0x06) [Octet 0x00, Octet 0x00] 16 -- SPI Start
@@ -215,7 +218,7 @@ spiIoFunc (SPI board@(Ice40Board dev)) writeBytes readSize = do
   _ <- boardCmd board (Octet 0x06) (Octet 0x06) [Octet 0x00, Octet 0x01] 16
   pure readBytes
 
-newtype M25P10Flash = M25P10Flash ((Array Octet) -> Int -> ExceptT String Aff (Array Octet))
+newtype M25P10Flash = M25P10Flash (Array Octet -> Int -> ExceptT String Aff (Array Octet))
 
 flashStatBusy :: Octet
 flashStatBusy = Octet 0x1
@@ -283,6 +286,5 @@ flashGetStatus (M25P10Flash io) =
 
 flashGetId :: M25P10Flash -> ExceptT String Aff (Array Octet)
 flashGetId (M25P10Flash io) =
-  io [flashCmdReadId] 4
-  >>= maybe (throwError "Failed to get flash id") pure <<< tail
+  io [flashCmdReadId] 4 >>= tail >>> maybe (throwError "Failed to get flash id") pure
 

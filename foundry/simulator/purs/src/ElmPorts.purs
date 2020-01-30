@@ -1,7 +1,8 @@
-module Elm
+module ElmPorts
   ( App
   , init
   , send
+  , sendNull
   , subscribe
   ) where
 
@@ -13,5 +14,6 @@ foreign import data App :: Type
 
 foreign import init :: Effect App
 foreign import send :: forall a. App -> String -> a -> Effect Unit
+foreign import sendNull :: App -> String -> Effect Unit
 foreign import subscribe :: forall a. App -> String -> (a -> Effect Unit) -> Effect Unit
 
