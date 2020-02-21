@@ -66,6 +66,7 @@ hostSimulator :: Int -> FilePath -> IO ()
 hostSimulator port fn =
   Snap.httpServe (snapConfig port) . asum $
     [ Snap.method Snap.GET . Snap.ifTop $ liftIO (getDataFileName "simulator/index.html" >>= readFile) >>= Snap.writeBS
+    , Snap.method Snap.GET . Snap.dir "iceburn.js" . Snap.ifTop $ liftIO (getDataFileName "simulator/iceburn/iceburn.js" >>= readFile) >>= Snap.writeBS
     , Snap.method Snap.GET . Snap.dir "main.js" . Snap.ifTop $ (liftIO . runExceptT . parseFile $ fn) >>= genSimulatorBS >>= Snap.writeBS
     , Snap.method Snap.GET . Snap.dir "open" . Snap.ifTop $ Snap.getQueryParam "file" >>= maybe Snap.pass (genSimulatorBS . parse . decodeUtf8) >>= Snap.writeBS
     , Snap.method Snap.POST . Snap.dir "burn" . Snap.ifTop $

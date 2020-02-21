@@ -29,6 +29,7 @@ library:
 
   build-tools:
     - alex
+    - foundry-sim-build-iceburn
     - happy
   dependencies:
     - bit-list
@@ -70,6 +71,9 @@ executables:
       - iceburn
       - mtl
       - text
+  foundry-sim-build-iceburn:
+    main:                Main.hs
+    source-dirs:         simulator/iceburn/build
 
 data-files:
   - assembler/assembler.c
@@ -86,14 +90,11 @@ data-files:
   - simulator/elm/src/List/Pad.elm
   - simulator/elm/src/WebUSB.elm
   - simulator/index.html
-  - simulator/purs/bower.json
-  - simulator/purs/src/ElmPorts.js.append
-  - simulator/purs/src/ElmPorts.purs
-  - simulator/purs/src/Ice40Board.purs
-  - simulator/purs/src/IceBurn.purs
-  - simulator/purs/src/Main.purs
-  - simulator/purs/src/WebUSB.js
-  - simulator/purs/src/WebUSB.purs
+  - simulator/iceburn/bower.json
+  - simulator/iceburn/src/Ice40Board.purs
+  - simulator/iceburn/src/Main.purs
+  - simulator/iceburn/src/WebUSB.js
+  - simulator/iceburn/src/WebUSB.purs
   - verilog/pinDef.pcf
   - verilog/prescaler.v
   - verilog/ram.v

@@ -17,7 +17,7 @@ import ClassyPrelude
 
 import Data.Bit (Bit(..))
 import Data.Bit.List (Endianness(..), bitsToInt)
-import Data.ByteString (appendFile)
+--import Data.ByteString (appendFile)
 import Data.List (foldl)
 import Data.Maybe (fromMaybe, mapMaybe)
 import Language.Elm.AST
@@ -28,7 +28,8 @@ import Paths_foundry
 import System.Directory (copyFile, createDirectoryIfMissing, withCurrentDirectory)
 import System.FilePath ((</>), takeDirectory)
 import System.IO.Temp (getCanonicalTemporaryDirectory)
-import System.Process (CreateProcess(..), StdStream(CreatePipe), callProcess, createProcess, proc, waitForProcess)
+--import System.Process (CreateProcess(..), StdStream(CreatePipe), callProcess, createProcess, proc, waitForProcess)
+import System.Process (callProcess)
 
 elmType :: Type -> ElmType
 elmType (RegT _)  = "String"
@@ -658,9 +659,11 @@ runElm elm = do
     , "WebUSB.elm"
     ]
   writeFile (elmSrcDir </> "Main.elm") . encodeUtf8 . pretty $ elm
-  withCurrentDirectory elmDir $
+  withCurrentDirectory elmDir $ do
     callProcess "elm" ["make", "--optimize", "--output=main.js", "src/Main.elm"]
+    readFile "main.js"
 
+{-
   let pursDir = dir </> "purs"
   let pursSrcDir = pursDir </> "src"
   bowerJsonSrc <- getDataFileName "simulator/purs/bower.json"
@@ -682,6 +685,7 @@ runElm elm = do
     bs <- hGetContents outH
     _ <- waitForProcess ph
     return bs
+-}
 
 genSimulatorBS :: MonadIO m => Either Text Proc -> m ByteString
 genSimulatorBS = liftIO . runElm . either genErrorPage genElm

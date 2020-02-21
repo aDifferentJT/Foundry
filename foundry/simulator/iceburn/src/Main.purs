@@ -1,19 +1,18 @@
-module IceBurn
-  ( module Octet
-  , burn
-  ) where
+module Main (burn) where
 
 import Prelude
 
 import Ice40Board
-import Ice40Board (Octet(..)) as Octet
 
-import Control.Monad.Except.Trans (ExceptT, throwError)
+import Control.Monad.Except.Trans (ExceptT, runExceptT, throwError)
 import Data.Array (cons, drop, head, length, take, zip, (..))
+import Data.Either (Either(Left, Right))
 import Data.Maybe (maybe)
 import Data.Traversable (traverse)
 import Data.Tuple (fst, snd)
-import Effect.Aff (Aff)
+import Effect (Effect)
+import Effect.Aff (Aff, runAff_)
+import Effect.Console (log)
 
 chunksOf :: forall a. Int -> Array a -> Array (Array a)
 chunksOf n xs =
@@ -21,9 +20,18 @@ chunksOf n xs =
   then [xs]
   else cons (take n xs) (chunksOf n (drop n xs))
 
-burn :: Array Octet -> ExceptT String Aff Unit
-burn bs =
-  withBoard $ \board ->
+burn :: (String -> Effect Unit) -> Effect Unit -> Array Octet -> Effect Unit
+burn onError onSuccess bs =
+  runAff_
+    (case _ of
+      Left e -> do
+        log (show e)
+        onError "JS Error (details in console)"
+      Right (Left e)     -> onError e
+      Right (Right unit) -> onSuccess
+    )
+  <<< runExceptT
+  <<< withBoard $ \board ->
     boardWithGpio board $ \gpio -> do
       gpioSetReset gpio true
       boardWithSpi board (Octet 0) $ \spi -> do

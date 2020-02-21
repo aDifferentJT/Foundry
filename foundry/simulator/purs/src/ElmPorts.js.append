@@ -1,5 +1,0 @@
-exports.init = () => exports.Elm.Main.init({ node: document.getElementById('elm') });
-exports.send = app => port => x => () => app.ports[port].send(x);
-exports.sendNull = app => port => exports.send(app)(port)(null);
-exports.subscribe = app => port => f => () => app.ports[port].subscribe(x => f(x)());
-
