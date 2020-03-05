@@ -1,10 +1,16 @@
-module Main (burn) where
+module IceBurn
+  ( burn
+  , chunksOf
+  , requestDevice
+  ) where
 
 import Prelude
 
-import Ice40Board
+import Ice40Board hiding (requestDevice)
+import Ice40Board as Ice40Board
 
 import Control.Monad.Except.Trans (ExceptT, runExceptT, throwError)
+import Control.Promise (Promise, toAff)
 import Data.Array (cons, drop, head, length, take, zip, (..))
 import Data.Either (Either(Left, Right))
 import Data.Maybe (maybe)
@@ -20,8 +26,8 @@ chunksOf n xs =
   then [xs]
   else cons (take n xs) (chunksOf n (drop n xs))
 
-burn :: (String -> Effect Unit) -> Effect Unit -> Array Octet -> Effect Unit
-burn onError onSuccess bs =
+burn :: (String -> Effect Unit) -> Effect Unit -> ClosedDevice -> Array Octet -> Effect Unit
+burn onError onSuccess dev bs =
   runAff_
     (case _ of
       Left e -> do
@@ -31,28 +37,31 @@ burn onError onSuccess bs =
       Right (Right unit) -> onSuccess
     )
   <<< runExceptT
-  <<< withBoard $ \board ->
+  <<< withBoard dev $ \board ->
     boardWithGpio board $ \gpio -> do
       gpioSetReset gpio true
       boardWithSpi board (Octet 0) $ \spi -> do
         _ <- spiSetSpeed spi 50_000_000
         spiSetMode spi
-
+  
         let flash = M25P10Flash <<< spiIoFunc $ spi
         flashWakeup flash
         flashId <- flashGetId flash
         unless (flashId == [Octet 0x20, Octet 0x20, Octet 0x11]) <<< throwError
           $ "ID incorrect, this may not be the correct flash, it has ID " <> (show flashId)
-
+  
         -- Erase
         flashChipErase flash
-
+  
         -- Write
         _ <- traverse (\xs -> flashPageProgram flash (maybe 0 fst <<< head $ xs) <<< map snd $ xs) <<< chunksOf 256 <<< zip (0 .. length bs) $ bs
-
+  
         -- Verify
         buf <- flashRead flash 0 (length bs)
         unless (buf == bs) <<< throwError $ "Image doesn't match"
-
+  
       gpioSetReset gpio false
+
+requestDevice :: forall a. (ClosedDevice -> Effect a) -> (String -> Effect a) -> Effect (Promise a)
+requestDevice = Ice40Board.requestDevice
 

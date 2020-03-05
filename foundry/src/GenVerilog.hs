@@ -1,4 +1,4 @@
-{-# LANGUAGE NoImplicitPrelude, OverloadedStrings, RecordWildCards, TupleSections #-}
+{-# LANGUAGE LambdaCase, NoImplicitPrelude, OverloadedStrings, RecordWildCards, TupleSections #-}
 
 {-|
 Module      : GenVerilog
@@ -222,14 +222,14 @@ genIsAlwaysRule p rules =
     (_:_:_) -> error "More than one rule"
 
 genNonEncRegDecl :: Reg -> V.Verilog
-genNonEncRegDecl (Reg name size _) = V.Reg size name Nothing (Just . V.Literal $ 0)
+genNonEncRegDecl (Reg name size _) = V.Reg size name Nothing Nothing
 
 genNonEncRegDecls :: Proc -> V.Verilog
 genNonEncRegDecls = V.Seq . map genNonEncRegDecl . filter (\(Reg _ _ e) -> null e) . regs
 
 genEncRegDecl :: (Int, [Reg]) -> V.Verilog
 genEncRegDecl (size, rs) = V.Seq
-  [ V.Reg size ("_regs" ++ tshow size) (Just $ n + 1) Nothing
+  [ V.Reg size ("_regs" ++ tshow size) (Just $ n + 1) Nothing --(Just . V.RawExpr $ "{" ++ intercalate "0" (replicate n "0" :: [Text]) ++ "}")
   , V.Seq [ V.Wire size name Nothing (Just . V.RawExpr $ "_regs" ++ tshow size ++ "[" ++ genBits bs ++ "]") | Reg name _ (Just bs) <- rs]
   ]
   where n = maximum . ncons 0 . map (\(Reg _ _ (Just bs)) -> bitsToInt Little bs) $ rs
@@ -319,7 +319,7 @@ genEncRegImpls Proc{..} = V.Seq
   where impls :: [(Int, Integer, [(V.Expr, V.Expr)])]
         impls = concatMap (\size -> zipWith (size,,) [0..] . map (\f -> mapMaybe (\(Inst n _ _ _) -> (\(x, _, z) -> (x, z)) <$> f n) insts) . encRegValues Proc{..} $ size) sizes
         sizes :: [Int]
-        sizes = Set.toList . Set.fromList . map (\(Reg _ n _) -> n) $ regs
+        sizes = Set.toList . Set.fromList . mapMaybe (\(Reg _ n e) -> e $> n) $ regs
 
 genRegImpls :: Proc -> V.Verilog
 genRegImpls = combineBlocks [genNonEncRegImpls, genEncRegImpls]
@@ -349,6 +349,15 @@ genEncRegWrites Proc{..} = V.Seq
         impls = concatMap (\size -> zipWith (size,,) [0..] . map (\f -> mapMaybe (\(Inst n _ _ _) -> (\(x, _, _) -> (x, V.Literal 1)) <$> f n) insts) . encRegValues Proc{..} $ size) sizes
         sizes :: [Int]
         sizes = Set.toList . Set.fromList . map (\(Reg _ n _) -> n) $ regs
+
+genInitialiseRegs :: Map Text Int -> Proc -> V.Verilog
+genInitialiseRegs regDefs =
+  V.Initial
+  . mapMaybe (\case
+    Reg name _ Nothing  -> (Nothing, V.Variable name,) . V.Literal <$> Map.lookup name regDefs
+    Reg name n (Just e) -> (Nothing, V.Index (V.Variable $ "__regs" ++ tshow n) (V.Bits e) (V.Bits e),) . V.Literal <$> Map.lookup name regDefs
+    )
+  . regs
 
 genUpdateRegs :: Proc -> V.Verilog
 genUpdateRegs Proc{..} =
@@ -525,8 +534,8 @@ genLed (LedImpl n1 n2 e) =
 genLeds :: Proc -> V.Verilog
 genLeds = V.Seq . map genLed . leds
 
-genProcModule :: Proc -> V.Verilog
-genProcModule = V.Module "PROCESSOR" ["input clk", "output [23:0] led", "output [3:0] indicators", "input [15:0] buttons"] . combineBlocks
+genProcModule :: Map Text Int -> Proc -> V.Verilog
+genProcModule regDefs = V.Module "PROCESSOR" ["input clk", "output [23:0] led", "output [3:0] indicators", "input [15:0] buttons"] . combineBlocks
   [ genButtonTriggers
   , genMemoryOuts
   , boilerplateRegs
@@ -534,6 +543,7 @@ genProcModule = V.Module "PROCESSOR" ["input clk", "output [23:0] led", "output 
   , genRegImpls
   , genEncRegIndices
   , genEncRegWrites
+  , genInitialiseRegs regDefs
   , genUpdateRegs
   , genMemoryIns
   , genMemoryAddrs
@@ -542,10 +552,10 @@ genProcModule = V.Module "PROCESSOR" ["input clk", "output [23:0] led", "output 
   , genLeds
   ]
 
-genAST :: Map Text FilePath -> Proc -> V.Verilog
-genAST memoryFiles = combineBlocks [genPreamble, genMemoryModules memoryFiles, genProcModule]
+genAST :: Map Text FilePath -> Map Text Int -> Proc -> V.Verilog
+genAST memoryFiles regDefs = combineBlocks [genPreamble, genMemoryModules memoryFiles, genProcModule regDefs]
 
 -- | Generate the verilog code for the given processor
-genVerilog :: Map Text FilePath -> Proc -> Text
-genVerilog memoryFiles = output 0 . optimise . genAST memoryFiles
+genVerilog :: Map Text FilePath -> Map Text Int -> Proc -> Text
+genVerilog memoryFiles regDefs = output 0 . optimise . genAST memoryFiles regDefs
 

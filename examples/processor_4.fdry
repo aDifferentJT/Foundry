@@ -22,6 +22,9 @@ pc     : Reg 4
 accum  : Reg 4
 buffer : Reg 8
 
+<Reg 8> : Bits 1
+--<buffer> = 0b0
+
 bufferI0  : Button 0
 bufferI1  : Button 1
 bufferI2  : Button 2

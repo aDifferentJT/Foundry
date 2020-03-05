@@ -60,6 +60,17 @@ output l (Reg  n x m y)  =
     Just y' -> " = " ++ outputExpr (l + 1) False y'
     )
   ++ ";" 
+output l (Initial xs)   =
+     replicate (2 * l) ' ' ++ "initial begin"
+  ++ "\n"
+  ++ combineLines ' ' " <= " "\n"
+       [ ( replicate (2 * (l + 1)) ' ' ++ maybe "" (\c' -> "if (" ++ outputExpr (l + 1) False c' ++ ") ") c ++ outputExpr (l + 1) False x1
+         , outputExpr (l + 1) False x2 ++ ";"
+         )
+       | (c, x1, x2) <- xs ]
+  ++ "\n"
+  ++ replicate (2 * l) ' ' ++ "end"
+  ++ "\n"
 output l (Always x ys)   =
      replicate (2 * l) ' ' ++ "always @ (" ++ x ++ ") begin"
   ++ "\n"

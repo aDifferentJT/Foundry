@@ -33,7 +33,7 @@ main = runExceptT
   ( do
     Options{..} <- getOpts
     ast <- parseFile fn
-    let verilog = genVerilog memoryFiles ast
+    let verilog = genVerilog memoryFiles Map.empty ast
     when shouldGenVerilog . lift . writeFileUtf8 (fn -<.> "v") $ verilog
     when shouldBurn . burn $ verilog
     when shouldGenAssembler . lift . genAssembler (dropExtensions . replaceBaseName fn $ (takeBaseName fn ++ "_assembler")) $ ast

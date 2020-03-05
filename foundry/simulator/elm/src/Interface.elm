@@ -7,31 +7,21 @@ module Interface exposing
     , interface
     )
 
-import Array exposing (Array)
 import Basics.Extra exposing (flip, uncurry)
-import Bitwise
-import Bootstrap.Alert as Alert
 import Bootstrap.Button as Button
 import Bootstrap.CDN
 import Bootstrap.Form.Input as Input
-import Bootstrap.Form.Radio as Radio
 import Bootstrap.Form.Range as Range
 import Bootstrap.Grid as Grid
 import Bootstrap.Grid.Col as Col
 import Bootstrap.Grid.Row as Row
-import Bootstrap.Modal as Modal
 import Bootstrap.Navbar as Navbar
-import Bootstrap.Spinner as Spinner
 import Bootstrap.Table as Table
 import Bootstrap.Utilities.Border as Border
-import Bootstrap.Utilities.Size as Size
 import Browser
 import Browser.Dom
-import Browser.Events
 import Browser.Navigation
-import Bytes exposing (Bytes)
-import Bytes.Decode
-import Bytes.Encode
+import Burn
 import Dict exposing (Dict)
 import File exposing (File)
 import File.Download
@@ -42,7 +32,6 @@ import Html.Attributes
 import Html.Events
 import Http
 import Icons
-import Json.Decode
 import List.Extra
 import List.Pad
 import Maybe exposing (withDefault)
@@ -50,7 +39,6 @@ import Maybe.Extra
 import Task
 import Time
 import Url.Builder
-import WebUSB
 
 
 type alias InspectibleMem simState =
@@ -82,33 +70,8 @@ type alias Sim simState =
     , tick : simState -> TickRes simState
     , getLeds : simState -> List Bool
     , getInspectibleMems : simState -> List (InspectibleMem simState)
+    , getRegValues : simState -> List ( String, Int )
     }
-
-
-type BurnStatus
-    = Burning
-    | BurnSuccess Alert.Visibility
-    | BurnFailed Alert.Visibility String
-
-
-type BurnLocation
-    = ClientBurn
-    | ServerBurn
-
-
-type BurnSelected
-    = OpenFile
-    | FoundryFileSelected (Maybe File)
-    | VerilogFileSelected (Maybe File)
-    | BinFileSelected (Maybe File)
-
-
-type BurnFile
-    = BinBytes Bytes
-    | DefaultFoundry
-    | FoundryFile File
-    | VerilogFile File
-    | BinFile File
 
 
 type alias Model simState =
@@ -116,13 +79,10 @@ type alias Model simState =
     , simState : simState
     , running : Bool
     , clockSpeed : Float
-    , buttonsPressed : Array Bool
     , editingMems : Dict ( Int, Int ) String
     , debugMsg : String
     , openFile : Maybe File
-    , burnStatus : BurnStatus
-    , advancedBurn : Modal.Visibility
-    , advancedBurnSelected : BurnSelected
+    , burn : Burn.Model
     }
 
 
@@ -137,7 +97,6 @@ type Msg simState
     | ManyMsgs (List (Msg simState))
     | TwoMsgs (Msg simState) (Msg simState)
     | ButtonPress Int
-    | ButtonRelease Int
     | Tick
     | ChangeClockSpeed Float
     | ChangeState simState
@@ -147,18 +106,19 @@ type Msg simState
     | OfferUploadMem MemoryFileFormat (InspectibleMem simState)
     | PerformUploadMem MemoryFileFormat (InspectibleMem simState) File
     | CompleteUploadMem MemoryFileFormat (InspectibleMem simState) String
-    | AdvancedBurn Modal.Visibility
-    | SetAdvancedBurnSelected BurnSelected
-    | SelectAdvancedBurnFile (File -> BurnSelected)
-    | PerformBurn BurnLocation BurnFile
-    | SetBurnStatus BurnStatus
     | OfferOpenFile
     | PerformOpenFile File
     | CompleteOpenFile String
+    | BurnMsg Burn.Msg
+
+
+type alias Flags =
+    { burnIsSupported : Bool
+    }
 
 
 type alias Interface simState =
-    Program () (Model simState) (Msg simState)
+    Program Flags (Model simState) (Msg simState)
 
 
 interface : Sim simState -> Interface simState
@@ -183,6 +143,7 @@ errorPage e =
             , tick = \() -> { debugMsg = "", newState = () }
             , getLeds = \() -> []
             , getInspectibleMems = \() -> []
+            , getRegValues = \() -> []
             }
     in
     Browser.document
@@ -193,8 +154,8 @@ errorPage e =
         }
 
 
-init : Sim simState -> () -> ( Model simState, Cmd (Msg simState) )
-init sim _ =
+init : Sim simState -> Flags -> ( Model simState, Cmd (Msg simState) )
+init sim flags =
     let
         ( navbarState, navbarCmd ) =
             Navbar.initialState NavbarMsg
@@ -203,13 +164,10 @@ init sim _ =
       , simState = sim.defaultState
       , running = False
       , clockSpeed = 200
-      , buttonsPressed = Array.repeat 16 False
       , editingMems = Dict.empty
       , debugMsg = ""
       , openFile = Nothing
-      , burnStatus = BurnSuccess Alert.closed
-      , advancedBurn = Modal.hidden
-      , advancedBurnSelected = OpenFile
+      , burn = Burn.init flags.burnIsSupported
       }
     , navbarCmd
     )
@@ -303,15 +261,7 @@ update sim msg model =
                 { model
                     | simState = sim.performButton n model.simState
                     , running = xor model.running (n == sim.runButton)
-                    , buttonsPressed = Array.set n True model.buttonsPressed
                 }
-
-        ButtonRelease n ->
-            ( { model
-                | buttonsPressed = Array.set n False model.buttonsPressed
-              }
-            , Cmd.none
-            )
 
         Tick ->
             updateMemScroll sim << performTick sim <| model
@@ -395,176 +345,6 @@ update sim msg model =
             , Cmd.none
             )
 
-        AdvancedBurn v ->
-            ( { model | advancedBurn = v }
-            , Cmd.none
-            )
-
-        SetAdvancedBurnSelected advancedBurnSelected ->
-            ( { model | advancedBurnSelected = advancedBurnSelected }
-            , Cmd.none
-            )
-
-        SelectAdvancedBurnFile advancedBurnSelected ->
-            ( model
-            , File.Select.file [ "text/plain" ] (SetAdvancedBurnSelected << advancedBurnSelected)
-            )
-
-        PerformBurn location file ->
-            ( { model
-                | burnStatus = Burning
-                , advancedBurn = Modal.hidden
-              }
-            , case ( location, file ) of
-                ( ClientBurn, BinBytes bs ) ->
-                    Maybe.Extra.unwrap Cmd.none WebUSB.burn
-                        << Bytes.Decode.decode
-                            (Bytes.Decode.loop
-                                ( Bytes.width bs
-                                , []
-                                )
-                                (\( n, xs ) ->
-                                    if n == 0 then
-                                        Bytes.Decode.succeed
-                                            (Bytes.Decode.Done
-                                                << List.reverse
-                                             <|
-                                                xs
-                                            )
-
-                                    else
-                                        Bytes.Decode.andThen
-                                            (\x ->
-                                                Bytes.Decode.succeed
-                                                    (Bytes.Decode.Loop
-                                                        ( n - 1
-                                                        , x :: xs
-                                                        )
-                                                    )
-                                            )
-                                            Bytes.Decode.unsignedInt8
-                                )
-                            )
-                    <|
-                        bs
-
-                ( ClientBurn, BinFile f ) ->
-                    Task.perform
-                        (PerformBurn ClientBurn << BinBytes)
-                        (File.toBytes f)
-
-                ( _, _ ) ->
-                    Http.post
-                        { url =
-                            Url.Builder.absolute
-                                [ case location of
-                                    ClientBurn ->
-                                        "synth"
-
-                                    ServerBurn ->
-                                        "burn"
-                                ]
-                                [ Url.Builder.string "type" <|
-                                    case file of
-                                        BinBytes _ ->
-                                            "bin"
-
-                                        DefaultFoundry ->
-                                            "defaultFoundry"
-
-                                        FoundryFile _ ->
-                                            "foundry"
-
-                                        VerilogFile _ ->
-                                            "verilog"
-
-                                        BinFile _ ->
-                                            "bin"
-                                ]
-                        , body =
-                            case file of
-                                BinBytes bs ->
-                                    Http.bytesBody "text/plain" bs
-
-                                DefaultFoundry ->
-                                    Http.emptyBody
-
-                                FoundryFile f ->
-                                    Http.fileBody f
-
-                                VerilogFile f ->
-                                    Http.fileBody f
-
-                                BinFile f ->
-                                    Http.fileBody f
-                        , expect =
-                            Http.expectBytes
-                                (\result ->
-                                    let
-                                        fail =
-                                            SetBurnStatus << BurnFailed Alert.shown
-                                    in
-                                    case result of
-                                        Ok cmd ->
-                                            cmd
-
-                                        Err (Http.BadUrl _) ->
-                                            fail "Server Not Found"
-
-                                        Err Http.Timeout ->
-                                            fail "Server Timeout"
-
-                                        Err Http.NetworkError ->
-                                            fail "Network Error"
-
-                                        Err (Http.BadStatus _) ->
-                                            fail "Server Error: Invalid Status"
-
-                                        Err (Http.BadBody _) ->
-                                            fail "Server Error: Invalid Body"
-                                )
-                                (Bytes.Decode.andThen
-                                    (\status ->
-                                        case status of
-                                            0 ->
-                                                case location of
-                                                    ClientBurn ->
-                                                        Bytes.Decode.map
-                                                            (PerformBurn ClientBurn << BinBytes)
-                                                            (Bytes.Decode.andThen
-                                                                Bytes.Decode.bytes
-                                                                (Bytes.Decode.unsignedInt32 Bytes.LE)
-                                                            )
-
-                                                    ServerBurn ->
-                                                        Bytes.Decode.succeed (SetBurnStatus (BurnSuccess Alert.shown))
-
-                                            1 ->
-                                                Bytes.Decode.map
-                                                    (SetBurnStatus << BurnFailed Alert.shown)
-                                                    (Bytes.Decode.andThen
-                                                        Bytes.Decode.string
-                                                        (Bytes.Decode.unsignedInt32 Bytes.LE)
-                                                    )
-
-                                            _ ->
-                                                Bytes.Decode.succeed
-                                                    (SetBurnStatus
-                                                        (BurnFailed Alert.shown "Unknown status recieved")
-                                                    )
-                                    )
-                                    Bytes.Decode.unsignedInt8
-                                )
-                        }
-            )
-
-        SetBurnStatus burnStatus ->
-            ( { model
-                | burnStatus = burnStatus
-              }
-            , Cmd.none
-            )
-
         OfferOpenFile ->
             ( model
             , File.Select.file [ "text/plain" ] PerformOpenFile
@@ -577,34 +357,47 @@ update sim msg model =
 
         CompleteOpenFile s ->
             ( model
-            , Browser.Navigation.load <| Url.Builder.absolute [ "open" ] [ Url.Builder.string "file" s ]
+            , Browser.Navigation.load <| Url.Builder.absolute [ "" ] [ Url.Builder.string "file" s ]
             )
+
+        BurnMsg burnMsg ->
+            let
+                memRegFileParts _ =
+                    List.concat
+                        [ List.map
+                            (\mem ->
+                                Http.stringPart ("mem_" ++ mem.name)
+                                    << String.join "\n"
+                                    << List.map (uncurry Hex.show << .getHex)
+                                <|
+                                    mem.contents
+                            )
+                          <|
+                            sim.getInspectibleMems model.simState
+                        , List.map
+                            (\( name, value ) ->
+                                Http.stringPart ("reg_" ++ name) (String.fromInt value)
+                            )
+                          <|
+                            sim.getRegValues model.simState
+                        ]
+            in
+            let
+                ( burn, cmd ) =
+                    Burn.update memRegFileParts burnMsg model.burn
+            in
+            ( { model | burn = burn }, Cmd.map BurnMsg cmd )
 
 
 subscriptions : Sim simState -> Model simState -> Sub (Msg simState)
-subscriptions sim model =
+subscriptions _ model =
     Sub.batch
         [ if model.running then
             Time.every model.clockSpeed (always Tick)
 
           else
             Sub.none
-        , WebUSB.burnFinished
-            (SetBurnStatus
-                << Maybe.Extra.unwrap
-                    (BurnSuccess Alert.shown)
-                    (BurnFailed Alert.shown)
-            )
-        , case model.burnStatus of
-            Burning ->
-                Sub.none
-
-            BurnSuccess v ->
-                Alert.subscriptions v (SetBurnStatus << BurnSuccess)
-
-            BurnFailed v e ->
-                Alert.subscriptions v (SetBurnStatus << flip BurnFailed e)
-        , Modal.subscriptions model.advancedBurn AdvancedBurn
+        , Sub.map BurnMsg (Burn.subscriptions model.burn)
         ]
 
 
@@ -655,17 +448,9 @@ ledTable sim model =
 
 
 makeButton : Sim simState -> Model simState -> Int -> Html (Msg simState)
-makeButton sim model n =
-    let
-        pressed =
-            withDefault False << Array.get n <| model.buttonsPressed
-    in
+makeButton sim _ n =
     Button.button
         [ Button.onClick (ButtonPress n)
-
-        --, Button.onMouseUp (ButtonRelease n)
-        --, Button.onMouseLeave (ButtonRelease n)
-        , Button.light
         , Button.outlineDark
         , Button.attrs
             [ Border.all
@@ -849,213 +634,41 @@ view simRes model =
             ]
             [ Navbar.view model.navbarState
                 << Navbar.withAnimation
-                << Navbar.brand [] [ Html.h1 [] [ Html.text "Foundry Simulator" ] ]
+                << Navbar.brand [ Html.Attributes.href "/" ] [ Html.h1 [] [ Html.text "Foundry Simulator" ] ]
                 << Navbar.items
-                    [ Navbar.itemLink
-                        [ Html.Events.onClick OfferOpenFile ]
-                        [ Html.text "Open" ]
-                    , Navbar.itemLink
-                        [ Html.Events.onClick
-                            (PerformBurn ClientBurn
-                                (Maybe.Extra.unwrap DefaultFoundry FoundryFile model.openFile)
-                            )
+                    (List.concat
+                        [ [ Navbar.itemLink
+                                [ Html.Events.onClick OfferOpenFile ]
+                                [ Html.text "Open" ]
+                          ]
+                        , Burn.navbarItems BurnMsg model.openFile model.burn
                         ]
-                        [ Html.text "Local Burn" ]
-                    , Navbar.itemLink
-                        [ Html.Events.onClick (AdvancedBurn Modal.shown) ]
-                        [ Html.text "Advanced Burn" ]
-                    ]
+                    )
                 << Navbar.customItems
                     (case simRes of
                         Err _ ->
                             []
 
                         Ok _ ->
-                            [ Navbar.formItem []
-                                [ Html.text <| "Clock speed (ms): " ++ String.fromFloat model.clockSpeed
-                                , Range.range
-                                    [ Range.min "100"
-                                    , Range.max "999"
-                                    , Range.value << String.fromFloat <| model.clockSpeed
-                                    , Range.step "1"
-                                    , Range.onInput (Just (ChangeClockSpeed << withDefault 200 << String.toFloat))
-                                    ]
+                            List.concat
+                                [ [ Navbar.formItem []
+                                        [ Html.text <| "Clock speed (ms): " ++ String.fromFloat model.clockSpeed
+                                        , Range.range
+                                            [ Range.min "100"
+                                            , Range.max "999"
+                                            , Range.value << String.fromFloat <| model.clockSpeed
+                                            , Range.step "1"
+                                            , Range.onInput (Just (ChangeClockSpeed << withDefault 200 << String.toFloat))
+                                            ]
+                                        ]
+                                  ]
+                                , Burn.navbarCustomItems BurnMsg model.burn
                                 ]
-                            ]
                     )
               <|
                 Navbar.config NavbarMsg
-            , case model.burnStatus of
-                Burning ->
-                    Alert.view Alert.shown
-                        << Alert.info
-                        << Alert.children [ Spinner.spinner [ Spinner.small ] [], Html.text "Burning" ]
-                    <|
-                        Alert.config
-
-                BurnSuccess visibility ->
-                    Alert.view visibility
-                        << Alert.success
-                        << Alert.dismissableWithAnimation (SetBurnStatus << BurnSuccess)
-                        << Alert.children [ Html.text "Burn succeeded" ]
-                    <|
-                        Alert.config
-
-                BurnFailed visibility error ->
-                    Alert.view visibility
-                        << Alert.danger
-                        << Alert.dismissableWithAnimation (SetBurnStatus << flip BurnFailed error)
-                        << Alert.children [ Html.text <| "Burn failed: " ++ error ]
-                    <|
-                        Alert.config
-            , Modal.view model.advancedBurn
-                << Modal.withAnimation AdvancedBurn
-                << Modal.h1 [] [ Html.text "Advanced Burn" ]
-                << (Modal.body []
-                        << Radio.radioList "advancedBurnRadios"
-                    <|
-                        [ Radio.create
-                            [ Radio.checked (model.advancedBurnSelected == OpenFile)
-                            , Radio.onClick (SetAdvancedBurnSelected OpenFile)
-                            ]
-                            "This File"
-                        , let
-                            isChecked =
-                                case model.advancedBurnSelected of
-                                    FoundryFileSelected _ ->
-                                        True
-
-                                    _ ->
-                                        False
-                          in
-                          Radio.createAdvanced
-                            [ Radio.checked isChecked
-                            , Radio.onClick (SetAdvancedBurnSelected (FoundryFileSelected Nothing))
-                            ]
-                            (Radio.label []
-                                [ Html.text "Foundry File"
-                                , Button.button
-                                    [ Button.onClick (SelectAdvancedBurnFile (FoundryFileSelected << Just))
-                                    , Button.small
-                                    , Button.outlinePrimary
-                                    , Button.disabled (not isChecked)
-                                    ]
-                                    [ Html.text "Upload" ]
-                                , Html.text <|
-                                    case model.advancedBurnSelected of
-                                        FoundryFileSelected (Just f) ->
-                                            File.name f
-
-                                        _ ->
-                                            "No file selected"
-                                ]
-                            )
-                        , let
-                            isChecked =
-                                case model.advancedBurnSelected of
-                                    VerilogFileSelected _ ->
-                                        True
-
-                                    _ ->
-                                        False
-                          in
-                          Radio.createAdvanced
-                            [ Radio.checked isChecked
-                            , Radio.onClick (SetAdvancedBurnSelected (VerilogFileSelected Nothing))
-                            ]
-                            (Radio.label []
-                                [ Html.text "Verilog File"
-                                , Button.button
-                                    [ Button.onClick (SelectAdvancedBurnFile (VerilogFileSelected << Just))
-                                    , Button.small
-                                    , Button.outlinePrimary
-                                    , Button.disabled (not isChecked)
-                                    ]
-                                    [ Html.text "Upload" ]
-                                , Html.text <|
-                                    case model.advancedBurnSelected of
-                                        VerilogFileSelected (Just f) ->
-                                            File.name f
-
-                                        _ ->
-                                            "No file selected"
-                                ]
-                            )
-                        , let
-                            isChecked =
-                                case model.advancedBurnSelected of
-                                    BinFileSelected _ ->
-                                        True
-
-                                    _ ->
-                                        False
-                          in
-                          Radio.createAdvanced
-                            [ Radio.checked isChecked
-                            , Radio.onClick (SetAdvancedBurnSelected (BinFileSelected Nothing))
-                            ]
-                            (Radio.label []
-                                [ Html.text "Bin File"
-                                , Button.button
-                                    [ Button.onClick (SelectAdvancedBurnFile (BinFileSelected << Just))
-                                    , Button.small
-                                    , Button.outlinePrimary
-                                    , Button.disabled (not isChecked)
-                                    ]
-                                    [ Html.text "Upload" ]
-                                , Html.text <|
-                                    case model.advancedBurnSelected of
-                                        BinFileSelected (Just f) ->
-                                            File.name f
-
-                                        _ ->
-                                            "No file selected"
-                                ]
-                            )
-                        ]
-                   )
-                << Modal.footer []
-                    (let
-                        burnFile =
-                            case model.advancedBurnSelected of
-                                OpenFile ->
-                                    Just
-                                        << Maybe.Extra.unwrap DefaultFoundry FoundryFile
-                                    <|
-                                        model.openFile
-
-                                FoundryFileSelected f ->
-                                    Maybe.map FoundryFile f
-
-                                VerilogFileSelected f ->
-                                    Maybe.map VerilogFile f
-
-                                BinFileSelected f ->
-                                    Maybe.map BinFile f
-                     in
-                     let
-                        button location =
-                            Button.button <|
-                                case burnFile of
-                                    Nothing ->
-                                        [ Button.primary
-                                        , Button.disabled True
-                                        ]
-
-                                    Just f ->
-                                        [ Button.onClick (PerformBurn location f)
-                                        , Button.primary
-                                        , Button.disabled False
-                                        ]
-                     in
-                     [ button ClientBurn
-                        [ Html.text "Client Burn" ]
-                     , button ServerBurn
-                        [ Html.text "Server Burn" ]
-                     ]
-                    )
-              <|
-                Modal.config (AdvancedBurn Modal.hidden)
+            , Html.map BurnMsg (Burn.alertView model.burn)
+            , Html.map BurnMsg (Burn.modalView model.openFile model.burn)
             , case simRes of
                 Err e ->
                     Html.pre [] [ Html.text e ]

@@ -25,6 +25,7 @@ data Verilog
   | Module Text [Text] Verilog
   | Wire Int Text (Maybe Int) (Maybe Expr)
   | Reg Int Text (Maybe Int) (Maybe Expr)
+  | Initial [(Maybe Expr, Expr, Expr)]
   | Always Text [(Maybe Expr, Expr, Expr)]
   | Assign Expr Expr
 

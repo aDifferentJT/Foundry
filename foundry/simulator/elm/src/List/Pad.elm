@@ -1,7 +1,5 @@
 module List.Pad exposing (padLeft, padRight)
 
-import Basics.Extra exposing (curry, uncurry)
-
 
 type Either a b
     = Left a

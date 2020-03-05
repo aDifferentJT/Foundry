@@ -1,4 +1,4 @@
-{-# LANGUAGE NoImplicitPrelude, OverloadedStrings #-}
+{-# LANGUAGE FlexibleInstances, NoImplicitPrelude, OverloadedStrings #-}
 
 {-|
 Module      : Language.Elm.AST
@@ -9,7 +9,8 @@ Maintainer  : jonathan.tanner@sjc.ox.ac.uk
 Stability   : experimental
 -}
 module Language.Elm.AST
-  ( ElmType(..)
+  ( ElmTypeWithIdent(..)
+  , ElmType
   , ElmPattern(..)
   , ElmExpr(..)
   , ElmStmt(..)
@@ -17,12 +18,15 @@ module Language.Elm.AST
 
 import ClassyPrelude
 
-data ElmType
-  = ElmTypeIdent Text
-  | ElmFuncType ElmType ElmType
-  | ElmTupleType [ElmType]
-  | ElmRecordType [(Text, ElmType)]
-  | ElmTypeFuncAppl Text [ElmType]
+data ElmTypeWithIdent a
+  = ElmTypeIdent a
+  | ElmFuncType (ElmTypeWithIdent a) (ElmTypeWithIdent a)
+  | ElmTupleType [ElmTypeWithIdent a]
+  | ElmRecordType [(a, ElmTypeWithIdent a)]
+  | ElmTypeFuncAppl a [ElmTypeWithIdent a]
+  deriving (Eq, Ord)
+
+type ElmType = ElmTypeWithIdent Text
 
 instance IsString ElmType where
   fromString = ElmTypeIdent . fromString
@@ -35,6 +39,7 @@ data ElmPattern
   | ElmCons ElmPattern ElmPattern
   | ElmListPat [ElmPattern]
   | ElmStringPat Text
+  deriving (Eq, Ord)
 
 instance IsString ElmPattern where
   fromString = ElmPatIdent . fromString
@@ -64,6 +69,7 @@ data ElmExpr
   | ElmRecordUpdate Text [(Text, ElmExpr)]
   | ElmLambda [ElmPattern] ElmExpr
   | ElmParenExpr ElmExpr
+  deriving (Eq, Ord)
 
 instance IsString ElmExpr where
   fromString = ElmExprIdent . fromString
@@ -86,4 +92,5 @@ data ElmStmt
   | ElmComment ElmStmt Text
   | ElmBlankLine
   | ElmStmts [ElmStmt]
+  deriving (Eq, Ord)
 

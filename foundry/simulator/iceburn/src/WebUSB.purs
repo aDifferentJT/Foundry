@@ -1,5 +1,6 @@
 module WebUSB
   ( Configuration
+  , ClosedDevice
   , Device
   , Interface
   , Octet(Octet)
@@ -8,10 +9,11 @@ module WebUSB
   , octetsToString
   , octetToInt
   , readControl
+  , requestDevice
   , usbRead
   , usbWrite
-  , withDevice
   , withConfiguration
+  , withDevice
   , withInterface
   , writeControl
   ) where
@@ -19,10 +21,10 @@ module WebUSB
 import Prelude
 
 import Control.Monad.Error.Class (class MonadError, catchError, throwError)
-import Control.Monad.Except.Trans (ExceptT(ExceptT), lift)
-import Control.Promise (Promise, toAffE)
+import Control.Monad.Except.Trans (ExceptT(ExceptT), lift, runExceptT)
+import Control.Promise (Promise, fromAff, toAffE)
 import Data.ByteString (fromUTF8, pack)
-import Data.Either (Either(Left, Right))
+import Data.Either (Either(Left, Right), either)
 import Data.Int (hexadecimal, toStringAs)
 import Data.Maybe (Maybe(Just, Nothing), maybe)
 import Data.Functor (map) as Functor
@@ -35,13 +37,18 @@ import Type.Quotient (mkQuotient)
 foreign import data Device :: Type
 
 foreign import _requestDevice :: Int -> Int -> Effect (Promise Device)
+
 foreign import _openDevice :: Device -> Effect (Promise Unit)
 foreign import _closeDevice :: Device -> Effect (Promise Unit)
+
 foreign import _selectConfiguration :: Device -> Octet -> Effect (Promise Unit)
+
 foreign import _claimInterface :: Device -> Octet -> Effect (Promise Unit)
 foreign import _releaseInterface :: Device -> Octet -> Effect (Promise Unit)
+
 foreign import _controlTransferIn :: Device -> String -> String -> Octet -> Int -> Int -> Int -> Effect (Promise (Array Octet))
 foreign import _controlTransferOut :: Device -> String -> String -> Octet -> Int -> Int -> Array Octet -> Effect (Promise Unit)
+
 foreign import _transferIn :: Device -> Octet -> Int -> Effect (Promise (Array Octet))
 foreign import _transferOut :: Device -> Octet -> Array Octet -> Effect (Promise Unit)
 
@@ -68,11 +75,21 @@ liftError e =
     )
   <<< Functor.map Right
 
-withDevice :: forall a. Int -> Int -> (Device -> ExceptT String Aff a) -> ExceptT String Aff a
-withDevice vendorId productId act = do
-  dev <- liftError "USB Error: Could not request device"
+newtype ClosedDevice = ClosedDevice Device
+
+requestDevice :: forall a. Int -> Int -> (ClosedDevice -> Effect a) -> (String -> Effect a) -> Effect (Promise a)
+requestDevice vendorId productId onSuccess onFailure = do
+  fromAff
+    <<< join
+    <<< map (either (liftEffect <<< onFailure) (liftEffect <<< onSuccess))
+    <<< runExceptT
+    <<< map ClosedDevice
+    <<< liftError "USB Error: Could not request device"
     <<< toAffE
     $ _requestDevice vendorId productId
+
+withDevice :: forall a. ClosedDevice -> (Device -> ExceptT String Aff a) -> ExceptT String Aff a
+withDevice (ClosedDevice dev) act = do
   liftError "USB Error: Could not open device" <<< toAffE $ _openDevice dev
   res <- act dev
   liftError "USB Error: Could not close device" <<< toAffE $ _closeDevice dev

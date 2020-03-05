@@ -11,5 +11,5 @@ TESTS := $(wildcard *.fdry)
 test: $(patsubst %.fdry,test-%,$(TESTS))
 
 test-%: %.fdry
-	/home/jt/.local/bin/Foundry-exe $<
+	/home/jt/.local/bin/foundry -v $<
 

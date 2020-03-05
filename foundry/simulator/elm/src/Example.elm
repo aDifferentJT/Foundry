@@ -453,6 +453,15 @@ getInspectibleMems simState =
     ]
 
 
+getRegValues : SimState -> List ( String, Int )
+getRegValues simState =
+    [ ( "accum", toInt simState.accum )
+    , ( "buffer", toInt simState.buffer )
+    , ( "inst", toInt simState.inst )
+    , ( "pc", toInt simState.pc )
+    ]
+
+
 sim : Sim SimState
 sim =
     { defaultState =
@@ -470,6 +479,7 @@ sim =
     , tick = tick
     , getLeds = getLeds
     , getInspectibleMems = getInspectibleMems
+    , getRegValues = getRegValues
     }
 
 

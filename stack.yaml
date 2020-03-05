@@ -42,6 +42,7 @@ packages:
 - simple-elm-ast
 - simple-verilog-ast
 - tasty-laws
+- typed-elm-ast
 - word-encoder
 # Dependency packages to be pulled from upstream that are not in the resolver.
 # These entries can reference officially published versions as well as

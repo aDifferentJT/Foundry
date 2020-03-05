@@ -1,5 +1,6 @@
 module Ice40Board
-  ( module Octet
+  ( module WebUSBReexport
+  , requestDevice
   , Ice40Board
   , withBoard
   , boardGetSerial
@@ -22,12 +23,14 @@ module Ice40Board
   , flashGetId
   ) where
 
-import WebUSB
-import WebUSB (Octet(..)) as Octet
+import WebUSB hiding (requestDevice)
+import WebUSB as WebUSB
+import WebUSB (ClosedDevice, Octet(..)) as WebUSBReexport
 
 import Prelude
 
 import Control.Monad.Except (ExceptT, class MonadError, catchError, throwError)
+import Control.Promise (Promise)
 import Data.Array (concat, cons, drop, head, index, length, replicate, take, takeWhile, tail, zip)
 import Data.Either (Either(Left, Right))
 import Data.Int.Bits (shl, shr, (.|.), (.&.))
@@ -35,6 +38,7 @@ import Data.Maybe (Maybe(Just, Nothing), maybe)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(Tuple), uncurry)
 import Data.Unfoldable (unfoldr)
+import Effect (Effect)
 import Effect.Aff (Aff)
 
 import Effect.Class (liftEffect)
@@ -107,9 +111,12 @@ dataIn = Octet 4
 
 newtype Ice40Board = Ice40Board Interface
 
-withBoard :: forall a. (Ice40Board -> ExceptT String Aff a) -> ExceptT String Aff a
-withBoard act =
-  withDevice ice40VendorId ice40ProductId $ \dev ->
+requestDevice :: forall a. (ClosedDevice -> Effect a) -> (String -> Effect a) -> Effect (Promise a)
+requestDevice = WebUSB.requestDevice ice40VendorId ice40ProductId
+
+withBoard :: forall a. ClosedDevice -> (Ice40Board -> ExceptT String Aff a) -> ExceptT String Aff a
+withBoard closedDev act =
+  withDevice closedDev $ \dev ->
     withConfiguration dev (Octet 1) $ \conf ->
       withInterface conf (Octet 0) $ \intf -> do
         let board = Ice40Board intf

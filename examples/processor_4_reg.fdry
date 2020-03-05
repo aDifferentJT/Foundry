@@ -73,11 +73,11 @@ halt {
 }
 
 addI <x> <n> {
-  x <- x + (0b00 ++ n)
+  x <- x + (n ++ 0b00)
 }
 
 subI <x> <n> {
-  x <- x - (0b00 ++ n)
+  x <- x - (n ++ 0b00)
 }
 
 addR <x> <y> {

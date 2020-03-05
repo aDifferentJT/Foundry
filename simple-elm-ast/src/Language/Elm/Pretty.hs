@@ -1,4 +1,4 @@
-{-# LANGUAGE NoImplicitPrelude, OverloadedStrings, TupleSections #-}
+{-# LANGUAGE FlexibleInstances, NoImplicitPrelude, OverloadedStrings, TupleSections #-}
 
 {-|
 Module      : Language.Elm.Pretty

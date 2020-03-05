@@ -34,10 +34,8 @@ module IntWidths exposing
     , toInt
     )
 
-import Basics.Extra exposing (flip)
 import Bitwise exposing (shiftLeftBy, shiftRightBy)
 import List.Extra
-import Maybe exposing (withDefault)
 
 
 type Zero

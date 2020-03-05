@@ -82,6 +82,7 @@ data-files:
   - assembler/utils.c
   - assembler/utils.h
   - simulator/elm/elm.json
+  - simulator/elm/src/Burn.elm
   - simulator/elm/src/Bootstrap/Form/Range.elm
   - simulator/elm/src/Hex.elm
   - simulator/elm/src/Icons.elm
@@ -90,11 +91,7 @@ data-files:
   - simulator/elm/src/List/Pad.elm
   - simulator/elm/src/WebUSB.elm
   - simulator/index.html
-  - simulator/iceburn/bower.json
-  - simulator/iceburn/src/Ice40Board.purs
-  - simulator/iceburn/src/Main.purs
-  - simulator/iceburn/src/WebUSB.js
-  - simulator/iceburn/src/WebUSB.purs
+  - simulator/iceburn/iceburn.js
   - verilog/pinDef.pcf
   - verilog/prescaler.v
   - verilog/ram.v

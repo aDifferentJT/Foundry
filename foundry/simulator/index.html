@@ -1,22 +1,79 @@
 <!DOCTYPE HTML>
+<meta charset="utf-8">
 <html>
   <head>
-    <script src="main.js"></script>
-    <script src="iceburn.js"></script>
   </head>
   <body>
     <div id="elm"></div>
-    <script>
-      var app = Elm.Main.init({
-        node: document.getElementById('elm')
+    <script type="module">
+      import("/main.js" + location.search).then(Main => {
+        const isSupported = !!(navigator.usb);
+  
+        var app = Main.Elm.Main.init(
+          { node: document.getElementById('elm')
+          , flags: { burnIsSupported: isSupported }
+          });
+  
+        function setDevice(dev) {
+          if (dev) {
+            let name;
+            if (dev.productName) {
+              name = dev.productName;
+            } else if (dev.manufacturerName) {
+              name = dev.manufacturerName;
+            } else {
+              name = "Unknown device"
+            }
+            app.ports.setDevice.send([dev, name]);
+          } else {
+            app.ports.setDevice.send(null);
+          }
+        }
+  
+        function scanDevices() {
+          navigator.usb.getDevices().then(devs => setDevice(devs[0]));
+        }
+  
+        scanDevices();
+  
+        navigator.usb.addEventListener("connect", event => {
+          setDevice(event.device);
+        });
+  
+        navigator.usb.addEventListener("disconnect", event => {
+          scanDevices();
+        });
+  
+        import("/iceburn.js");
+
+        app.ports.portRequestDevice.subscribe(() =>
+          IceBurn.requestDevice(dev => () =>
+            setDevice(dev)
+          )(e => () =>
+            app.ports.deviceSelectionFailed.send(e)
+          )()
+        );
+  
+        function burn(dev, bs) {
+          IceBurn.burn(e => () =>
+            app.ports.burnFinished.send(e)
+          )(() =>
+            app.ports.burnFinished.send(null)
+          )(dev)(bs)()
+        }
+  
+        app.ports.portBurn.subscribe(([dev, bs]) => {
+          if (dev) {
+            burn(dev, bs);
+          } else {
+            IceBurn.requestDevice(d => () =>
+              burn(d, bs)
+            )(e => () =>
+              app.ports.burnFinished.send(e)
+            )();
+          }
+        });
       });
-      app.ports.burn.subscribe(bs =>
-        PS.IceBurn.burn(e => () =>
-          app.ports.burn.send(e)
-        )(() =>
-          app.ports.burn.send(null)
-        )(bs)()
-      );
     </script>
   </body>
 </html>
