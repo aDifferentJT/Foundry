@@ -52,6 +52,7 @@ library:
     - snap-server
     - temporary
     - text
+    - typed-elm-ast
     - word-encoder
 
 executables:

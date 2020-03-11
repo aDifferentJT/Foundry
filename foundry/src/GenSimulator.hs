@@ -22,6 +22,7 @@ import Data.List.Group (groupWith)
 import Data.Maybe (fromMaybe, mapMaybe)
 import Language.Elm.AST
 import Language.Elm.Pretty (pretty)
+import Language.Elm.Typed
 import Language.Foundry.Proc
 import Maps.Text (textHeadToUpper)
 import Paths_foundry
