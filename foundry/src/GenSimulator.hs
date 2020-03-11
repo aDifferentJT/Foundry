@@ -1,4 +1,4 @@
-{-# LANGUAGE LambdaCase, NoImplicitPrelude, OverloadedStrings, RecordWildCards #-}
+{-# LANGUAGE DataKinds, GADTs, KindSignatures, LambdaCase, NoMonadFailDesugaring, NoImplicitPrelude, OverloadedStrings, RecordWildCards #-}
 
 {-|
 Module      : GenSimulator
@@ -20,6 +20,7 @@ import Data.Bit.List (Endianness(..), bitsToInt)
 import Data.List (foldl)
 import Data.List.Group (groupWith)
 import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Proxy (Proxy(..))
 import Language.Elm.AST
 import Language.Elm.Pretty (pretty)
 import Language.Elm.Typed
@@ -850,15 +851,20 @@ genElm = ElmStmts . intersperse (ElmStmts . replicate 2 $ ElmBlankLine) . flap
   , genMain
   ]
 
-genErrorPage :: Text -> ElmStmt
-genErrorPage e = ElmStmts
-  [ ElmModule "Main" ["main"]
-  , ElmBlankLine
-  , ElmImport "Interface" [".."]
-  , ElmBlankLine
-  , ElmTypeSig "main" (ElmTypeFuncAppl "Interface" [ElmTupleType []])
-  , ElmDef "main" (ElmFuncAppl "errorPage" [ElmStringExpr e])
-  ]
+genErrorPage ::
+  (
+  ) => Text
+    -> ElmStmt
+genErrorPage e = elmModule "Main" (Proxy :: Proxy '[ 'ElmTypeFuncAppl "Interface" '[ 'ElmTupleType '[] ] ])
+  (   elmDef "main" (Proxy :: Proxy ('[] :: [ElmTypeKind])) HNil
+      (\HNil -> do
+        (_, _ ::: errorPage ::: HNil) <- elmImport "Interface"
+          (Proxy :: Proxy '[ 'ElmTypeIdent "Type", 'ElmFuncType ('ElmTypeIdent "String") ('ElmTypeFuncAppl "Interface" '[ 'ElmTupleType '[] ])])
+          ("Interface" ::: "errorPage" ::: HNil)
+        return (errorPage $$ e)
+      )
+  ::: HNil
+  )
 
 copyFileMakingParents :: FilePath -> FilePath -> IO ()
 copyFileMakingParents src dest = do

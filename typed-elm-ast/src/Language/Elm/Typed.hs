@@ -10,6 +10,9 @@ Stability   : experimental
 -}
 module Language.Elm.Typed
   ( HList(..)
+  , ElmTypeKind
+  , ElmIdentRep
+  , ElmStmtMonad
   , ($$)
   , elmModule
   , elmImport
@@ -54,8 +57,8 @@ data HList (ts :: [k]) where
 class AllEqual t (ts :: [*]) where
   flattenHList :: HList ts -> [t]
 
-instance AllEqual t '[t] where
-  flattenHList (x ::: HNil) = [x]
+instance AllEqual t '[] where
+  flattenHList HNil = []
 
 instance AllEqual t ts => AllEqual t (t ': ts) where
   flattenHList (x ::: xs) = x : flattenHList xs
@@ -202,9 +205,10 @@ elmModule :: forall (ts :: [ElmTypeKind]).
   , MapHList (MapTypeList ElmStmtMonad (MapTypeList ElmIdentRep ts)) (MapConstTypeList (ElmStmtMonad Text) ts)
   , ReplicateDoublePolyArgHList ElmStmtMonad ElmIdentRep ts (ElmStmtMonad Text)
   ) => Text
+    -> Proxy ts
     -> HList (MapTypeList ElmStmtMonad (MapTypeList ElmIdentRep ts))
     -> ElmStmt
-elmModule name es = ElmStmts
+elmModule name Proxy es = ElmStmts
   [ ElmModule name exportIdents
   , ElmBlankLine
   , ElmStmts . intersperse (ElmStmts . replicate 2 $ ElmBlankLine) . Set.toList $ stmts
@@ -234,9 +238,10 @@ elmImport :: forall (ts :: [ElmTypeKind]).
   , MapHList (MapConstTypeList Text ts) (MapTypeList ElmIdentRep ts)
   , ReplicatePolyResultHList Text ElmIdentRep ts
   ) => Text
+    -> Proxy ts
     -> HList (MapConstTypeList Text ts)
     -> ElmStmtMonad (Text -> UnknownElmIdentRep, HList (MapTypeList ElmIdentRep ts))
-elmImport m is = do
+elmImport m Proxy is = do
   State.modify (Set.insert (ElmImport m (flattenHList is)))
   return 
     ( mkUnknownElmIdentRep . ((m ++ ".") ++)
@@ -251,10 +256,11 @@ elmDef :: forall a (ts :: [ElmTypeKind]).
   , MapHList (MapConstTypeList Text ts) (MapTypeList ElmIdentRep ts)
   , ReplicatePolyResultHList Text ElmIdentRep ts
   ) => Text
+    -> Proxy ts
     -> HList (MapConstTypeList Text ts)
     -> (HList (MapTypeList ElmIdentRep ts) -> ElmStmtMonad a)
     -> ElmStmtMonad (ElmIdentRep (ElmExprTypeKind a))
-elmDef ident args body = do
+elmDef ident Proxy args body = do
   body' <- fmap elmExpr . body . mapHList (replicatePolyResultHList (Proxy :: Proxy ts) ElmIdentRep) $ args
   State.modify
     ( Set.insert
