@@ -28,6 +28,7 @@ library:
     - ghc-prim
     - simple-elm-ast
     - transformers
+    - typenums
 
 tests:
   HLint-test:

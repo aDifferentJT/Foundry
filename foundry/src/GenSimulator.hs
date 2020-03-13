@@ -35,18 +35,18 @@ import System.Process (callProcess)
 elmType :: Type -> ElmType
 elmType (RegT n)  = ElmTypeIdent $ "Reg" ++ tshow n
 elmType (BitsT _) = ElmTupleType []
-elmType (IntT n)  = ElmTypeFuncAppl "IntW" [ElmTypeIdent $ "Num" ++ tshow n]
+elmType (IntT _)  = "IntW"
 elmType  InstT    = ElmTupleType []
 
-elmOp :: Op -> Int -> ElmExpr
-elmOp Add        _ = ElmFuncAppl "binOpW" [ElmParenExpr "+"]
-elmOp Sub        _ = ElmFuncAppl "binOpW" [ElmParenExpr "-"]
-elmOp Mul        _ = ElmFuncAppl "binOpW" [ElmParenExpr "*"]
-elmOp Div        _ = ElmFuncAppl "binOpW" [ElmParenExpr "/"]
-elmOp ConcatBits w = ElmExprIdent $ "concatBits" ++ tshow w
-elmOp BitwiseAnd _ = ElmFuncAppl "binOpW" [ElmMember "Bitwise" "and"]
-elmOp BitwiseOr  _ = ElmFuncAppl "binOpW" [ElmMember "Bitwise" "or"]
-elmOp BitwiseXor _ = ElmFuncAppl "binOpW" [ElmMember "Bitwise" "xor"]
+elmOp :: Op -> ElmExpr
+elmOp Add        = ElmFuncAppl "binOpW" [ElmParenExpr "+"]
+elmOp Sub        = ElmFuncAppl "binOpW" [ElmParenExpr "-"]
+elmOp Mul        = ElmFuncAppl "binOpW" [ElmParenExpr "*"]
+elmOp Div        = ElmFuncAppl "binOpW" [ElmParenExpr "/"]
+elmOp ConcatBits = "concatBits"
+elmOp BitwiseAnd = ElmFuncAppl "binOpW" [ElmMember "Bitwise" "and"]
+elmOp BitwiseOr  = ElmFuncAppl "binOpW" [ElmMember "Bitwise" "or"]
+elmOp BitwiseXor = ElmFuncAppl "binOpW" [ElmMember "Bitwise" "xor"]
 
 elmBoolExpr :: Proc -> [Type] -> [Text] -> BoolExpr -> ElmExpr
 elmBoolExpr Proc{..} ts as (EqualityExpr e1 e2)   = ElmBinOp (elmExpr Proc{..} ts as 1 e1) "==" (elmExpr Proc{..} ts as 1 e2)
@@ -76,15 +76,15 @@ elmExpr Proc{..} ts as _ (MemAccessExpr _ i e) =
         $ memorys
   in
   ElmFuncAppl "withDefault"
-    [ ElmFuncAppl (ElmExprIdent $ "int" ++ tshow dw) [0]
+    [ ElmFuncAppl "toIntW" [ElmExprInt dw, 0]
     , ElmFuncAppl (ElmMember "Array" "get")
-        [ ElmFuncAppl "toInt" [elmExpr Proc{..} ts as aw e]
+        [ ElmFuncAppl "fromIntW" [elmExpr Proc{..} ts as aw e]
         , ElmMember "simState" i
         ]
     ]
-elmExpr Proc{..} _  _  w (ConstExpr n)         = ElmFuncAppl (ElmExprIdent $ "int" ++ tshow w) [ElmExprInt n]
-elmExpr Proc{..} _  _  _ (BinaryConstExpr bs)  = ElmFuncAppl (ElmExprIdent $ "int" ++ (tshow . length $ bs)) [ElmExprInt . bitsToInt Big $ bs]
-elmExpr Proc{..} ts as w (OpExpr _ o e1 e2)    = ElmFuncAppl (elmOp o (fromMaybe 0 . widthOfExpr $ e1)) [elmExpr Proc{..} ts as w e1, elmExpr Proc{..} ts as w e2]
+elmExpr Proc{..} _  _  w (ConstExpr n)         = ElmFuncAppl "toIntW" [ElmExprInt w, ElmExprInt n]
+elmExpr Proc{..} _  _  _ (BinaryConstExpr bs)  = ElmFuncAppl "toIntW" [ElmExprInt . length $ bs, ElmExprInt . bitsToInt Big $ bs]
+elmExpr Proc{..} ts as w (OpExpr _ o e1 e2)    = ElmFuncAppl (elmOp o) [elmExpr Proc{..} ts as w e1, elmExpr Proc{..} ts as w e2]
 elmExpr Proc{..} ts as w (TernaryExpr _ c t f) = ElmTernOp (elmBoolExpr Proc{..} ts as c) (elmExpr Proc{..} ts as w t) (elmExpr Proc{..} ts as w f)
 
 elmImplRule :: Proc -> [Type] -> [Text] -> ImplRule -> ElmExpr
@@ -118,7 +118,7 @@ elmImplRule Proc{..} ts as (ImplRule (MemAccessLValue i e1) e2) =
     ( ElmRecordUpdate "s"
       [ ( i
         , ElmFuncAppl (ElmMember "Array" "set")
-          [ ElmFuncAppl "toInt" [elmExpr Proc{..} ts as w e1]
+          [ ElmFuncAppl "fromIntW" [elmExpr Proc{..} ts as w e1]
           , elmExpr Proc{..} ts as w e2
           , ElmMember "simState" i
           ]
@@ -263,7 +263,7 @@ genShowInst Proc{..} = ElmStmts
   where showArg :: Type -> ElmExpr -> ElmExpr
         showArg (RegT n)  e = ElmFuncAppl (ElmExprIdent $ "showReg" ++ tshow n) [e]
         showArg (BitsT _) e = e
-        showArg (IntT _)  e = ElmBinOp (ElmBinOp (ElmMember "String" "fromInt") "<<" "toInt") "<|" e
+        showArg (IntT _)  e = ElmBinOp (ElmBinOp (ElmMember "String" "fromInt") "<<" "fromIntW") "<|" e
         showArg  InstT    e = e
 
 genReadInst :: Proc -> ElmStmt
@@ -306,7 +306,7 @@ genReadInst Proc{..} = ElmStmts
         readArg (IntT w)  e =
           ElmBinOp
             ( ElmBinOp
-              (ElmFuncAppl (ElmMember "Maybe" "map") [ElmExprIdent $ "int" ++ tshow w])
+              (ElmFuncAppl (ElmMember "Maybe" "map") [ElmFuncAppl "toIntW" [ElmExprInt w]])
               "<<"
               (ElmMember "String" "toInt")
             )
@@ -368,28 +368,11 @@ encodeBits ts as (EncBitsExpr _ i) =
     Nothing           -> error "Argument not found"
 encodeBits ts as (ConcatBitsExpr _ e1 (ConstBitsExpr [])) = encodeBits ts as e1
 encodeBits ts as (ConcatBitsExpr _ (ConstBitsExpr []) e2) = encodeBits ts as e2
-encodeBits ts as (ConcatBitsExpr _ e1 e2) = ElmFuncAppl (ElmExprIdent $ "concatBits" ++ (tshow . sizeOfEnc $ e1)) (map (encodeBits ts as) [e1, e2])
+encodeBits ts as (ConcatBitsExpr _ e1 e2) = ElmFuncAppl "concatBits" (map (encodeBits ts as) [e1, e2])
 
 genDecodeInst :: Proc -> ElmStmt
 genDecodeInst Proc{..} = ElmStmts
-  [ ElmTypeSig "decodeInst"
-      ( ElmFuncType
-          ( ElmTypeFuncAppl "IntW"
-            [ ElmTypeIdent
-              . ("Num" ++)
-              $ ( tshow
-                . fromMaybe 0
-                . headMay
-                . mapMaybe (\case
-                    EncType InstT n -> Just n
-                    _               -> Nothing
-                  )
-                $ encTypes
-                )
-            ]
-          )
-          "Inst"
-        )
+  [ ElmTypeSig "decodeInst" (ElmFuncType "IntW" "Inst")
   , ElmDef (ElmPatFuncAppl "decodeInst" ["x"])
     . ElmCaseExpr (ElmFuncAppl "intToBits" ["Little", "x"])
     $ [ ( ElmListPat . decodeBits . ConcatBitsExpr (length bs + sizeOfEnc enc) (ConstBitsExpr bs) $ enc
@@ -428,23 +411,7 @@ genDecodeInst Proc{..} = ElmStmts
 
 genEncodeInst :: Proc -> ElmStmt
 genEncodeInst Proc{..} = ElmStmts
-  [ ElmTypeSig "encodeInst"
-    ( ElmFuncType
-      "Inst"
-      ( ElmTypeFuncAppl "IntW"
-        [ ElmTypeIdent
-          . ("Num" ++)
-          . tshow
-          . fromMaybe 0
-          . headMay
-          . mapMaybe (\case
-              EncType InstT n -> Just n
-              _               -> Nothing
-            )
-          $ encTypes
-        ]
-      )
-    )
+  [ ElmTypeSig "encodeInst" (ElmFuncType "Inst" "IntW")
   , ElmDef (ElmPatFuncAppl "encodeInst" ["i"])
     . ElmCaseExpr "i"
     $ [ ( ElmPatFuncAppl (textHeadToUpper i) (zipWith (\n _ -> ElmPatIdent . ("arg" ++) . tshow $ n) [1 :: Int ..] as)
@@ -489,21 +456,7 @@ genEncodeRegs Proc{..} = ElmStmts . intersperse (ElmStmts . replicate 2 $ ElmBla
         . tshow
         $ size
         )
-        ( ElmTypeFuncAppl "IntW"
-          [ ElmTypeIdent
-            . ("Num" ++)
-            . tshow
-            . fromMaybe 0
-            . headMay
-            . mapMaybe (\case
-                EncType (RegT w) n
-                  | w == size -> Just n
-                  | otherwise -> Nothing
-                _             -> Nothing
-              )
-            $ encTypes
-          ]
-        )
+        "IntW"
       )
     , ElmDef (ElmPatFuncAppl ("encodeReg" ++ tshow size) ["r"])
       . ElmCaseExpr "r"
@@ -601,7 +554,7 @@ genGetInspectibleMems Proc{..} = ElmStmts
                         [ ElmStringExpr ""
                         , if (fst <$> instMemIndex) == Just i
                           then ElmBinOp "showInst" "<<" "decodeInst"
-                          else ElmBinOp (ElmMember "String" "fromInt") "<<" "toInt"
+                          else ElmBinOp (ElmMember "String" "fromInt") "<<" "fromIntW"
                         ]
                       )
                       "<<"
@@ -615,7 +568,7 @@ genGetInspectibleMems Proc{..} = ElmStmts
                     [ ElmExprInt dw
                     , ElmBinOp
                       ( ElmBinOp
-                        (ElmFuncAppl (ElmMember (ElmMember "Maybe" "Extra") "unwrap") [0, "toInt"])
+                        (ElmFuncAppl (ElmMember (ElmMember "Maybe" "Extra") "unwrap") [0, "fromIntW"])
                         "<<"
                         (ElmFuncAppl (ElmMember "Array" "get") ["n"])
                       )
@@ -634,7 +587,7 @@ genGetInspectibleMems Proc{..} = ElmStmts
                               , ElmFuncAppl
                                 ( if (fst <$> instMemIndex) == Just i
                                   then "encodeInst"
-                                  else ElmExprIdent $ "int" ++ tshow dw
+                                  else ElmFuncAppl "toIntW" [ElmExprInt dw]
                                 )
                                 ["x"]
                               , ElmMember "simState" i
@@ -652,10 +605,7 @@ genGetInspectibleMems Proc{..} = ElmStmts
                 , ( "selected"
                   , maybe "False"
                     ( ElmBinOp
-                        ( ElmFuncAppl
-                          (ElmExprIdent $ "int" ++ tshow aw)
-                          ["n"]
-                        )
+                        (ElmFuncAppl "toIntW" [ElmExprInt aw, "n"])
                         "=="
                       . elmExpr Proc{..} [] [] aw
                     )
@@ -691,9 +641,7 @@ genGetInspectibleMems Proc{..} = ElmStmts
                               "unwrap"
                             )
                             [ ElmFuncAppl "withDefault"
-                              [ ElmFuncAppl
-                                (ElmExprIdent $ "int" ++ tshow dw)
-                                [0]
+                              [ ElmFuncAppl "toIntW" [ElmExprInt dw, 0]
                               , ElmFuncAppl
                                 (ElmMember "Array" "get")
                                 [ "n"
@@ -702,7 +650,7 @@ genGetInspectibleMems Proc{..} = ElmStmts
                               ]
                             , if (fst <$> instMemIndex) == Just i
                               then "encodeInst"
-                              else ElmExprIdent $ "int" ++ tshow dw
+                              else ElmFuncAppl "toIntW" [ElmExprInt dw]
                             ]
                           )
                           "<<"
@@ -727,7 +675,7 @@ genGetInspectibleMems Proc{..} = ElmStmts
                   ( ElmBinOp
                     (ElmMember "Array" "fromList")
                     "<<"
-                    (ElmFuncAppl (ElmMember "List" "map") [ElmExprIdent $ "int" ++ tshow dw])
+                    (ElmFuncAppl (ElmMember "List" "map") [ElmFuncAppl "toIntW" [ElmExprInt dw]])
                   )
                   "<|"
                   "xs"
@@ -750,7 +698,7 @@ genGetRegValues Proc{..} = ElmStmts
         )
   , ElmDef (ElmPatFuncAppl "getRegValues" ["simState"])
     . ElmListExpr
-    $ [ ElmTupleExpr [ElmStringExpr i, ElmFuncAppl "toInt" [ElmMember "simState" i]]
+    $ [ ElmTupleExpr [ElmStringExpr i, ElmFuncAppl "fromIntW" [ElmMember "simState" i]]
       | Reg i _ _ <- regs
       ]
   ]
@@ -763,14 +711,14 @@ genSim Proc{..} = ElmStmts
     $ [ ( "defaultState"
         , ElmRecord
           ( [ ( i
-              , ElmFuncAppl (ElmExprIdent $ "int" ++ tshow w) [0]
+              , ElmFuncAppl "toIntW" [ElmExprInt w, 0]
               )
             | Reg i w _ <- regs 
             ] ++
             [ ( i
               , ElmFuncAppl (ElmMember "Array" "repeat")
                 [ ElmBinOp 2 "^" (ElmExprInt aw)
-                , ElmFuncAppl (ElmExprIdent $ "int" ++ tshow dw) [0]
+                , ElmFuncAppl "toIntW" [ElmExprInt dw, 0]
                 ]
               )
             | Memory i dw aw <- memorys

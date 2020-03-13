@@ -60,12 +60,12 @@ data ElmExpr
   | ElmTernOp ElmExpr ElmExpr ElmExpr
   | ElmCaseExpr ElmExpr [(ElmPattern, ElmExpr)]
   | ElmLetIn ElmPattern ElmExpr ElmExpr
-  | ElmMember ElmExpr Text
   | ElmStringExpr Text
   | ElmTupleExpr [ElmExpr]
   | ElmListExpr [ElmExpr]
   | ElmFuncAppl ElmExpr [ElmExpr]
   | ElmRecord [(Text, ElmExpr)]
+  | ElmMember ElmExpr Text
   | ElmRecordUpdate Text [(Text, ElmExpr)]
   | ElmLambda [ElmPattern] ElmExpr
   | ElmParenExpr ElmExpr

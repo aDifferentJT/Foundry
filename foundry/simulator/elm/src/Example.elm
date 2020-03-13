@@ -10,12 +10,12 @@ import String
 
 
 type alias SimState =
-    { accum : IntW Num4
-    , buffer : IntW Num8
-    , inst : IntW Num8
-    , pc : IntW Num4
-    , dataMem : Array (IntW Num4)
-    , progMem : Array (IntW Num8)
+    { accum : IntW
+    , buffer : IntW
+    , inst : IntW
+    , pc : IntW
+    , dataMem : Array IntW
+    , progMem : Array IntW
     }
 
 
@@ -24,72 +24,72 @@ performButton n simState =
     case n of
         0 ->
             { simState
-                | buffer = binOpW Bitwise.xor simState.buffer (int8 1)
+                | buffer = binOpW Bitwise.xor simState.buffer (toIntW 8 1)
             }
 
         1 ->
             { simState
-                | buffer = binOpW Bitwise.xor simState.buffer (int8 2)
+                | buffer = binOpW Bitwise.xor simState.buffer (toIntW 8 2)
             }
 
         2 ->
             { simState
-                | buffer = binOpW Bitwise.xor simState.buffer (int8 4)
+                | buffer = binOpW Bitwise.xor simState.buffer (toIntW 8 4)
             }
 
         3 ->
             { simState
-                | buffer = binOpW Bitwise.xor simState.buffer (int8 8)
+                | buffer = binOpW Bitwise.xor simState.buffer (toIntW 8 8)
             }
 
         4 ->
             { simState
-                | buffer = binOpW Bitwise.xor simState.buffer (int8 16)
+                | buffer = binOpW Bitwise.xor simState.buffer (toIntW 8 16)
             }
 
         5 ->
             { simState
-                | buffer = binOpW Bitwise.xor simState.buffer (int8 32)
+                | buffer = binOpW Bitwise.xor simState.buffer (toIntW 8 32)
             }
 
         6 ->
             { simState
-                | buffer = binOpW Bitwise.xor simState.buffer (int8 64)
+                | buffer = binOpW Bitwise.xor simState.buffer (toIntW 8 64)
             }
 
         7 ->
             { simState
-                | buffer = binOpW Bitwise.xor simState.buffer (int8 128)
+                | buffer = binOpW Bitwise.xor simState.buffer (toIntW 8 128)
             }
 
         8 ->
             { simState
-                | progMem = Array.set (toInt simState.pc) simState.buffer simState.progMem
+                | progMem = Array.set (fromIntW simState.pc) simState.buffer simState.progMem
             }
 
         9 ->
             { simState
-                | buffer = int8 0
+                | buffer = toIntW 8 0
             }
 
         10 ->
             { simState
-                | pc = binOpW (+) simState.pc (int4 1)
+                | pc = binOpW (+) simState.pc (toIntW 4 1)
             }
 
         11 ->
             { simState
-                | pc = binOpW (-) simState.pc (int4 1)
+                | pc = binOpW (-) simState.pc (toIntW 4 1)
             }
 
         12 ->
             { simState
-                | pc = int4 0
+                | pc = toIntW 4 0
             }
 
         13 ->
             { simState
-                | accum = int4 0
+                | accum = toIntW 4 0
             }
 
         _ ->
@@ -153,13 +153,13 @@ getButtonName n =
 
 type Inst
     = Halt
-    | Ldi (IntW Num4)
-    | Add (IntW Num4)
-    | Sub (IntW Num4)
-    | Ldm (IntW Num4)
-    | Stm (IntW Num4)
-    | Jp (IntW Num4)
-    | Jpz (IntW Num4)
+    | Ldi IntW
+    | Add IntW
+    | Sub IntW
+    | Ldm IntW
+    | Stm IntW
+    | Jp IntW
+    | Jpz IntW
 
 
 showInst : Inst -> String
@@ -169,25 +169,25 @@ showInst i =
             "halt"
 
         Ldi n ->
-            "ldi " ++ (String.fromInt << toInt <| n)
+            "ldi " ++ (String.fromInt << fromIntW <| n)
 
         Add n ->
-            "add " ++ (String.fromInt << toInt <| n)
+            "add " ++ (String.fromInt << fromIntW <| n)
 
         Sub n ->
-            "sub " ++ (String.fromInt << toInt <| n)
+            "sub " ++ (String.fromInt << fromIntW <| n)
 
         Ldm n ->
-            "ldm " ++ (String.fromInt << toInt <| n)
+            "ldm " ++ (String.fromInt << fromIntW <| n)
 
         Stm n ->
-            "stm " ++ (String.fromInt << toInt <| n)
+            "stm " ++ (String.fromInt << fromIntW <| n)
 
         Jp n ->
-            "jp " ++ (String.fromInt << toInt <| n)
+            "jp " ++ (String.fromInt << fromIntW <| n)
 
         Jpz n ->
-            "jpz " ++ (String.fromInt << toInt <| n)
+            "jpz " ++ (String.fromInt << fromIntW <| n)
 
 
 readInst : String -> Maybe Inst
@@ -202,31 +202,31 @@ readInst s =
             Just Halt
 
         [ "ldi", n ] ->
-            Maybe.Extra.andMap (Maybe.map int4 << String.toInt <| n) (Just Ldi)
+            Maybe.Extra.andMap (Maybe.map (toIntW 4) << String.toInt <| n) (Just Ldi)
 
         [ "add", n ] ->
-            Maybe.Extra.andMap (Maybe.map int4 << String.toInt <| n) (Just Add)
+            Maybe.Extra.andMap (Maybe.map (toIntW 4) << String.toInt <| n) (Just Add)
 
         [ "sub", n ] ->
-            Maybe.Extra.andMap (Maybe.map int4 << String.toInt <| n) (Just Sub)
+            Maybe.Extra.andMap (Maybe.map (toIntW 4) << String.toInt <| n) (Just Sub)
 
         [ "ldm", n ] ->
-            Maybe.Extra.andMap (Maybe.map int4 << String.toInt <| n) (Just Ldm)
+            Maybe.Extra.andMap (Maybe.map (toIntW 4) << String.toInt <| n) (Just Ldm)
 
         [ "stm", n ] ->
-            Maybe.Extra.andMap (Maybe.map int4 << String.toInt <| n) (Just Stm)
+            Maybe.Extra.andMap (Maybe.map (toIntW 4) << String.toInt <| n) (Just Stm)
 
         [ "jp", n ] ->
-            Maybe.Extra.andMap (Maybe.map int4 << String.toInt <| n) (Just Jp)
+            Maybe.Extra.andMap (Maybe.map (toIntW 4) << String.toInt <| n) (Just Jp)
 
         [ "jpz", n ] ->
-            Maybe.Extra.andMap (Maybe.map int4 << String.toInt <| n) (Just Jpz)
+            Maybe.Extra.andMap (Maybe.map (toIntW 4) << String.toInt <| n) (Just Jpz)
 
         _ ->
             Nothing
 
 
-decodeInst : IntW Num8 -> Inst
+decodeInst : IntW -> Inst
 decodeInst x =
     case intToBits Little x of
         [ False, False, False, False, False, False, False, False ] ->
@@ -257,32 +257,32 @@ decodeInst x =
             Halt
 
 
-encodeInst : Inst -> IntW Num8
+encodeInst : Inst -> IntW
 encodeInst i =
     case i of
         Halt ->
             bitsToInt Little [ False, False, False, False, False, False, False, False ]
 
         Ldi n ->
-            concatBits4 (bitsToInt Little [ False, False, False, True ]) n
+            concatBits (bitsToInt Little [ False, False, False, True ]) n
 
         Add n ->
-            concatBits4 (bitsToInt Little [ False, False, True, False ]) n
+            concatBits (bitsToInt Little [ False, False, True, False ]) n
 
         Sub n ->
-            concatBits4 (bitsToInt Little [ False, False, True, True ]) n
+            concatBits (bitsToInt Little [ False, False, True, True ]) n
 
         Ldm n ->
-            concatBits4 (bitsToInt Little [ False, True, False, False ]) n
+            concatBits (bitsToInt Little [ False, True, False, False ]) n
 
         Stm n ->
-            concatBits4 (bitsToInt Little [ False, True, False, True ]) n
+            concatBits (bitsToInt Little [ False, True, False, True ]) n
 
         Jp n ->
-            concatBits4 (bitsToInt Little [ False, True, True, False ]) n
+            concatBits (bitsToInt Little [ False, True, True, False ]) n
 
         Jpz n ->
-            concatBits4 (bitsToInt Little [ False, True, True, True ]) n
+            concatBits (bitsToInt Little [ False, True, True, True ]) n
 
 
 tick : SimState -> TickRes SimState
@@ -290,8 +290,8 @@ tick simState =
     let
         simState_ =
             { simState
-                | inst = withDefault (int8 0) (Array.get (toInt simState.pc) simState.progMem)
-                , pc = binOpW (+) simState.pc (int4 1)
+                | inst = withDefault (toIntW 8 0) (Array.get (fromIntW simState.pc) simState.progMem)
+                , pc = binOpW (+) simState.pc (toIntW 4 1)
             }
     in
     let
@@ -323,12 +323,12 @@ tick simState =
 
             Ldm n ->
                 { simState_
-                    | accum = withDefault (int4 0) (Array.get (toInt n) simState.dataMem)
+                    | accum = withDefault (toIntW 4 0) (Array.get (fromIntW n) simState.dataMem)
                 }
 
             Stm n ->
                 { simState_
-                    | dataMem = Array.set (toInt n) simState.accum simState.dataMem
+                    | dataMem = Array.set (fromIntW n) simState.accum simState.dataMem
                 }
 
             Jp n ->
@@ -339,11 +339,11 @@ tick simState =
             Jpz n ->
                 { simState_
                     | pc =
-                        if simState.accum == int4 0 then
+                        if simState.accum == toIntW 4 0 then
                             n
 
                         else
-                            binOpW (+) simState.pc (int4 1)
+                            binOpW (+) simState.pc (toIntW 4 1)
                 }
     }
 
@@ -351,7 +351,7 @@ tick simState =
 getLeds : SimState -> List Bool
 getLeds simState =
     intToBits Little simState.buffer
-        ++ intToBits Little (withDefault (int8 0) (Array.get (toInt simState.pc) simState.progMem))
+        ++ intToBits Little (withDefault (toIntW 8 0) (Array.get (fromIntW simState.pc) simState.progMem))
         ++ intToBits Little simState.pc
         ++ intToBits Little simState.accum
 
@@ -367,7 +367,7 @@ getInspectibleMems simState =
                             << Array.get n
                         <|
                             simState.progMem
-                    , getHex = ( 8, Maybe.Extra.unwrap 0 toInt << Array.get n <| simState.progMem )
+                    , getHex = ( 8, Maybe.Extra.unwrap 0 fromIntW << Array.get n <| simState.progMem )
                     , set =
                         Maybe.map
                             (\i ->
@@ -376,7 +376,7 @@ getInspectibleMems simState =
                                 }
                             )
                             << readInst
-                    , selected = simState.pc == int4 n
+                    , selected = simState.pc == toIntW 4 n
                     }
                 )
                 (List.range 0 ((2 ^ 4) - 1))
@@ -389,7 +389,7 @@ getInspectibleMems simState =
                                 (\n ->
                                     Maybe.Extra.unwrap
                                         (withDefault
-                                            (int8 0)
+                                            (toIntW 8 0)
                                             (Array.get n simState.progMem)
                                         )
                                         encodeInst
@@ -401,7 +401,7 @@ getInspectibleMems simState =
       , setAllHex =
             \xs ->
                 { simState
-                    | progMem = Array.fromList << List.map int8 <| xs
+                    | progMem = Array.fromList << List.map (toIntW 8) <| xs
                 }
       }
     , { name = "dataMem"
@@ -409,16 +409,16 @@ getInspectibleMems simState =
             List.map
                 (\n ->
                     { value =
-                        Maybe.Extra.unwrap "" (String.fromInt << toInt)
+                        Maybe.Extra.unwrap "" (String.fromInt << fromIntW)
                             << Array.get n
                         <|
                             simState.dataMem
-                    , getHex = ( 4, Maybe.Extra.unwrap 0 toInt << Array.get n <| simState.dataMem )
+                    , getHex = ( 4, Maybe.Extra.unwrap 0 fromIntW << Array.get n <| simState.dataMem )
                     , set =
                         Maybe.map
                             (\x ->
                                 { simState
-                                    | dataMem = Array.set n (int4 x) simState.dataMem
+                                    | dataMem = Array.set n (toIntW 4 x) simState.dataMem
                                 }
                             )
                             << String.toInt
@@ -435,10 +435,10 @@ getInspectibleMems simState =
                                 (\n ->
                                     Maybe.Extra.unwrap
                                         (withDefault
-                                            (int4 0)
+                                            (toIntW 4 0)
                                             (Array.get n simState.dataMem)
                                         )
-                                        int4
+                                        (toIntW 4)
                                         << String.toInt
                                 )
                         <|
@@ -447,7 +447,7 @@ getInspectibleMems simState =
       , setAllHex =
             \xs ->
                 { simState
-                    | dataMem = Array.fromList << List.map int4 <| xs
+                    | dataMem = Array.fromList << List.map (toIntW 4) <| xs
                 }
       }
     ]
@@ -455,22 +455,22 @@ getInspectibleMems simState =
 
 getRegValues : SimState -> List ( String, Int )
 getRegValues simState =
-    [ ( "accum", toInt simState.accum )
-    , ( "buffer", toInt simState.buffer )
-    , ( "inst", toInt simState.inst )
-    , ( "pc", toInt simState.pc )
+    [ ( "accum", fromIntW simState.accum )
+    , ( "buffer", fromIntW simState.buffer )
+    , ( "inst", fromIntW simState.inst )
+    , ( "pc", fromIntW simState.pc )
     ]
 
 
 sim : Sim SimState
 sim =
     { defaultState =
-        { accum = int4 0
-        , buffer = int8 0
-        , inst = int8 0
-        , pc = int4 0
-        , dataMem = Array.repeat (2 ^ 4) (int4 0)
-        , progMem = Array.repeat (2 ^ 4) (int8 0)
+        { accum = toIntW 4 0
+        , buffer = toIntW 8 0
+        , inst = toIntW 8 0
+        , pc = toIntW 4 0
+        , dataMem = Array.repeat (2 ^ 4) (toIntW 4 0)
+        , progMem = Array.repeat (2 ^ 4) (toIntW 8 0)
         }
     , performButton = performButton
     , getButtonName = getButtonName
