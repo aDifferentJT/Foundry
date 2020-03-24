@@ -10,10 +10,17 @@ Stability   : experimental
 -}
 module Language.Elm.Typed
   ( HList(..)
+  , UnzipHList(..)
   , ElmTypeKind
-  , ElmIdentRep
+  , ElmIdentRep(..)
+  , UnknownElmIdentRep(..)
+  , AnyElmExpr(..)
+  , ElmBinOpRep(..)
+  , ElmTernOpRep(..)
   , ElmStmtMonad
   , ($$)
+  , (<$$>)
+  , (<*$$*>)
   , (.:.)
   , elmModule
   , elmImport
@@ -89,6 +96,16 @@ instance MapHList '[] '[] where
 
 instance (MapHList as bs) => MapHList (a ': as) (b ': bs) where
   mapHList (f ::: fs) (x ::: xs) = f x ::: mapHList fs xs
+
+
+class UnzipHList (as :: [*]) where
+  unzipHList :: Functor f => f (HList as) -> HList (MapTypeList f as)
+
+instance UnzipHList '[] where
+  unzipHList _ = HNil
+
+instance UnzipHList as => UnzipHList (a ': as) where
+  unzipHList xs' = ((\(x ::: _) -> x) <$> xs') ::: (unzipHList . fmap (\(_ ::: xs) -> xs) $ xs')
 
 
 class ReplicatePolyResultHList (a :: *) (c :: k -> *) (ts :: [k]) where
@@ -271,6 +288,39 @@ instance ElmExprRep Int where
   elmExpr = ElmExprInt
 
 
+data ElmBinOpRep a b (t :: ElmTypeKind) where
+  ElmBinOpRep ::
+    ( ElmExprRep a
+    , ElmExprRep b
+    ) => Text
+      -> a
+      -> b
+      -> ElmBinOpRep a b t
+
+instance ElmExprRep (ElmBinOpRep a b t) where
+  type ElmExprTypeKind (ElmBinOpRep a b t) = t
+  elmTypeDef Proxy = Nothing
+  elmExpr (ElmBinOpRep i x y) = ElmBinOp (elmExpr x) i (elmExpr y)
+
+
+data ElmTernOpRep c a b where
+  ElmTernOpRep :: 
+    ( ElmExprRep c
+    , ElmExprTypeKind c ~ 'ElmTypeIdent "Bool"
+    , ElmExprRep a
+    , ElmExprRep b
+    , ElmExprTypeKind a ~ ElmExprTypeKind b
+    ) => c
+      -> a
+      -> b
+      -> ElmTernOpRep c a b
+
+instance ElmExprRep (ElmTernOpRep c a b) where
+  type ElmExprTypeKind (ElmTernOpRep c a b) = ElmExprTypeKind a
+  elmTypeDef Proxy = Nothing
+  elmExpr (ElmTernOpRep c t f) = ElmTernOp (elmExpr c) (elmExpr t) (elmExpr f)
+
+
 class ElmCases (t1 :: ElmTypeKind) (cs :: [*]) (t2 :: ElmTypeKind) where
   elmCases :: Proxy t1 -> Proxy t2 -> HList cs -> [(ElmPattern, ElmExpr)]
 instance ElmCases t1 '[] t2 where
@@ -333,6 +383,12 @@ instance (ElmExprRep a, ElmExprRep b, ElmExprTypeKind a ~ 'ElmFuncType (ElmExprT
 
 ($$) :: (ElmExprRep a, ElmExprRep b) => a -> b -> ElmFuncApplRep a b
 ($$) = ElmFuncApplRep
+
+(<$$>) :: (Functor m, ElmExprRep a, ElmExprRep b) => a -> m b -> m (ElmFuncApplRep a b)
+f <$$> x = (f $$) <$> x
+
+(<*$$*>) :: (Applicative m, ElmExprRep a, ElmExprRep b) => m a -> m b -> m (ElmFuncApplRep a b)
+f <*$$*> x = ($$) <$> f <*> x
 
 
 class ElmRecordFieldList (fs :: [(Symbol, *)]) where
@@ -438,9 +494,7 @@ elmModule name Proxy es = ElmStmts
 newtype UnknownElmIdentRep = UnknownElmIdentRep (forall (t :: ElmTypeKind). ElmIdentRep t)
 
 mkUnknownElmIdentRep :: Text -> UnknownElmIdentRep
-mkUnknownElmIdentRep i = UnknownElmIdentRep i'
-  where i' :: forall (t :: ElmTypeKind). ElmIdentRep t
-        i' = ElmIdentRep i
+mkUnknownElmIdentRep i = UnknownElmIdentRep (ElmIdentRep i)
 
 elmImport :: forall (ts :: [ElmTypeKind]).
   ( AllEqual Text (MapConstTypeList Text ts)
