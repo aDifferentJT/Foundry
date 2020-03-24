@@ -458,12 +458,15 @@ clearLocalVars = do
   State.put $ ParserState{ stateLocalVars = Map.empty, .. }
 
 -- | Define the type of an encoding in the `ParserMonad'
-defineEncType :: Locatable Type -> Locatable Int -> ParserMonad (Locatable EncType)
+defineEncType :: Locatable Type -> Locatable Int -> ParserMonad (Locatable (EncType, Maybe RegType))
 defineEncType t n = do
   ParserState{..} <- State.get
   when (Map.member (locatableValue t) stateEncWidths) . throwLocalError () t $ "Encoding of type " ++ tshow t ++ " redefined"
   State.put $ ParserState{ stateEncWidths = Map.insert (locatableValue t) (locatableValue n) stateEncWidths, .. }
-  return $ EncType <$> t <*> n
+  let encType = EncType <$> t <*> n
+  case locatableValue t of
+    InstT -> liftA2 (,) encType <$> (fmap Just <$> defineReg (t $> "inst") n)
+    _ -> return . fmap (, Nothing) $ encType
 
 -- | Get the width of the given encoding
 getEncWidth :: Locatable Type -> ParserMonad (Maybe Int)

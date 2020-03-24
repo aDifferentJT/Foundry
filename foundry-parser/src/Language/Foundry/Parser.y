@@ -92,7 +92,9 @@ RawProc           : {- empty -}                                           { init
                   | InstType RawProc                                      { over rawInsts    (uncurry Map.insert . locatableValue $ $1) $2 }
                   | ButtonType RawProc                                    { over rawButtons  (uncurry Map.insert . locatableValue $ $1) $2 }
                   | MemoryType RawProc                                    { over rawMemorys  (locatableValue $1 :) $2 }
-                  | EncType RawProc                                       { over rawEncTypes (locatableValue $1 :) $2 }
+                  | EncType RawProc                                       {
+  maybe id (over rawRegs . uncurry Map.insert) (snd . locatableValue $ $1) . over rawEncTypes (fst (locatableValue $1) :) $ $2
+}
                   | Enc RawProc                                           { over rawEncs     (uncurry Map.insert . locatableValue $ $1) $2 }
                   | Impl RawProc                                          { over rawImpls    (uncurry Map.insert . locatableValue $ $1) $2 }
                   | LedImpls RawProc                                      {%
@@ -151,7 +153,7 @@ MemoryType        : Var ':' ramT int int semi                             {% def
 List(p)           : {- empty -}                                           { pure [] }
                   | List(p) p                                             { liftA2 (:) $2 $1 }
 
-EncType           :: { Locatable EncType }
+EncType           :: { Locatable (EncType, Maybe RegType) }
 EncType           : '<' Type '>' ':' bitsT int semi                       {% fmap (<* $1) $ defineEncType $2 $6 }
 
 ArgList           :: { Locatable [Locatable Text] }
